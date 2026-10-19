@@ -3,8 +3,6 @@ use \MarcusJaschen\Collmex\Client\Curl as CurlClient;
 use \MarcusJaschen\Collmex\Request;
 use \MarcusJaschen\Collmex\Type\CustomerGet;
 
-use Phalcon\Config;
-
 class UpdateTask extends BaseTask
 {
     /*
@@ -132,8 +130,9 @@ class UpdateTask extends BaseTask
     }
 
     /**
-     * Main Action will check all collmex customers and update them in mysql db
-     * when address has changed geolocation will be set tu null
+     * Main Action will check all collmex customers and update them in mysql db.
+     * A changed street, zip or city is geocoded again. The existing pin stays
+     * until Photon returns a new coordinate.
      */
     public function mainAction()
     {
@@ -170,21 +169,27 @@ class UpdateTask extends BaseTask
                     * otherwise create new item
                     */
                     if ($item = Item::findFirst('collmex_address_id = ' . (int)$data['address_id'])) {
-                        /*
-                         * check if address is updatet set coordinates to null
-                         * because while next geo update location will be recrawled
-                         */
-
-
-                        if (
-                            $item->getStreet() != $data['street'] ||
-                            $item->getZip() != preg_replace('/[^0-9]/', '', $data['zip']) ||
-                            $item->getCity() != $data['city']
-                        ) {
-                            $item->setGeolocateCount(0);
-                            $item->setLat(null);
-                            $item->setLng(null);
-
+                        $newZip = preg_replace('/[^0-9]/', '', $data['zip']);
+                        $changed = AddressChange::addressDiffers(
+                            $item->getStreet(),
+                            $item->getZip(),
+                            $item->getCity(),
+                            $data['street'],
+                            $newZip,
+                            $data['city']
+                        );
+                        if ($changed) {
+                            $next = AddressChange::nextGeoState(
+                                true,
+                                $item->getLat(),
+                                $item->getLng(),
+                                $item->getGeolocateCount(),
+                                1
+                            );
+                            $item->setLat($next['lat']);
+                            $item->setLng($next['lng']);
+                            $item->setGeolocateCount($next['geolocate_count']);
+                            $item->setGeocodePending($next['geocode_pending']);
                             $address_changes++;
                         }
 
@@ -192,6 +197,7 @@ class UpdateTask extends BaseTask
 
                     } else {
                         $item = new Item();
+                        $item->setGeocodePending(1);
                         $new_records++;
                     }
 
@@ -210,6 +216,8 @@ class UpdateTask extends BaseTask
                     if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
                         $item->setEmail($email);
                     }
+
+                    $item->setPhone(isset($data['phone']) ? trim($data['phone']) : '');
 
                     /*
                      * save values in model object
@@ -365,23 +373,31 @@ class UpdateTask extends BaseTask
             $faled_items = 0;
             
             foreach ($items as $item) {
-                if(((int)$item->lat == 0) || ((int)$item->lng == 0)) {
-                    
-                    $item->geolocate_count = (int)$item->geolocate_count+1;
+                $missing = ((int)$item->lat == 0) || ((int)$item->lng == 0);
+                $pending = (int)$item->getGeocodePending() === 1;
+                if($missing || $pending) {
 
                     /*
-                     * change address string to city when offertype is only speaker
+                     * Speakers are located by city only.
                      */
                     $geo = NULL;
                     if(count($item->offertypes) == 1 && $item->offertypes[0]->id == $this->offertype_sprecher->id) {
-                        $geo = $this->getCoordinatesViaNominatim("", "", $item->city, $this->countryMapper($item->country));
+                        $geo = $this->getCoordinates("", "", $item->city, $item->country);
                     } else {
-                        $geo = $this->getCoordinatesViaNominatim($item->street, $item->zip, $item->city, $this->countryMapper($item->country));
+                        $geo = $this->getCoordinates($item->street, $item->zip, $item->city, $item->country);
                     }
+
+                    if ($geo === false) {
+                        echo PHP_EOL . 'Abbruch: Photon Rate-Limit. Später erneut: php app/cli.php update geo' . PHP_EOL;
+                        break;
+                    }
+
+                    $item->geolocate_count = (int)$item->geolocate_count + 1;
 
                     if($geo) {
                         $item->setLat($geo['lat']);
                         $item->setLng($geo['lng']);
+                        $item->setGeocodePending(0);
                         
                         echo ".";
                         $new_updated_items++;
@@ -401,6 +417,98 @@ class UpdateTask extends BaseTask
             echo $faled_items . ' not locateable' . PHP_EOL;
         }
         
+    }
+
+    /**
+     * Give up-items another Photon pass: no coordinates yet, or a pending address change.
+     */
+    public function geoResetAction()
+    {
+        $items = Item::find();
+        $reset = 0;
+        foreach ($items as $item) {
+            $missing = ((int) $item->lat == 0) || ((int) $item->lng == 0);
+            $pending = (int) $item->getGeocodePending() === 1;
+            if (!$missing && !$pending) {
+                continue;
+            }
+            $item->setGeolocateCount(0);
+            if ($item->save()) {
+                $reset++;
+            }
+        }
+        echo $reset . ' items queued for php app/cli.php update geo' . PHP_EOL;
+    }
+
+    /**
+     * Print Collmex addresses that share a normalized street+zip+city, or the same pin.
+     * Does not delete or hide anything.
+     */
+    public function duplicatesAction()
+    {
+        $rows = array();
+        foreach (Item::find() as $item) {
+            $rows[] = array(
+                'id' => (int) $item->id,
+                'collmex_address_id' => $item->getCollmexAddressId(),
+                'name' => $item->getName(),
+                'street' => $item->getStreet(),
+                'zip' => $item->getZip(),
+                'city' => $item->getCity(),
+                'lat' => $item->getLat(),
+                'lng' => $item->getLng(),
+            );
+        }
+
+        $groups = DuplicateFinder::groups($rows);
+        echo 'Address groups: ' . count($groups['address']) . PHP_EOL;
+        foreach ($groups['address'] as $key => $group) {
+            echo PHP_EOL . $key . PHP_EOL;
+            foreach ($group as $row) {
+                echo '  #' . $row['collmex_address_id'] . ' ' . $row['name'] . ' (' . $row['id'] . ')' . PHP_EOL;
+            }
+        }
+
+        echo PHP_EOL . 'Same-point groups: ' . count($groups['point']) . PHP_EOL;
+        foreach ($groups['point'] as $key => $group) {
+            $ids = array();
+            foreach ($group as $row) {
+                $ids[] = $row['collmex_address_id'] . ' ' . $row['name'];
+            }
+            echo '  ' . $key . ' => ' . implode(' | ', $ids) . PHP_EOL;
+        }
+    }
+
+    /**
+     * Sample Photon street vs Collmex street. Disagreement is data, not another geocoder.
+     */
+    public function streetsAction()
+    {
+        $checked = 0;
+        $differ = 0;
+        foreach (Item::find() as $item) {
+            if (trim((string) $item->getStreet()) === '' || trim((string) $item->getCity()) === '') {
+                continue;
+            }
+            $geo = $this->getCoordinates($item->getStreet(), $item->getZip(), $item->getCity(), $item->getCountry());
+            if ($geo === false) {
+                echo 'Abbruch: Photon Rate-Limit.' . PHP_EOL;
+                break;
+            }
+            $checked++;
+            if (!is_array($geo)) {
+                echo 'not found  #' . $item->getCollmexAddressId() . ' ' . $item->getStreet() . ', ' . $item->getZip() . ' ' . $item->getCity() . PHP_EOL;
+                continue;
+            }
+            if (StreetCompare::differs($item->getStreet(), $geo['street'])) {
+                $differ++;
+                echo 'differs  #' . $item->getCollmexAddressId()
+                    . ' collmex="' . $item->getStreet()
+                    . '" photon="' . $geo['street']
+                    . '" ' . $item->getZip() . ' ' . $item->getCity() . PHP_EOL;
+            }
+        }
+        echo $checked . ' checked, ' . $differ . ' street names differ from Photon' . PHP_EOL;
     }
 
     /*
@@ -550,10 +658,12 @@ class UpdateTask extends BaseTask
         /*
          * cleanup web address field
          */
-        $data['web'] = trim($data['web']);
+        $data['web'] = isset($data['web']) ? trim($data['web']) : '';
         if($data['web'] != '') {
             $data['web'] = $this->addhttp($data['web']);
         }
+
+        $data['phone'] = isset($data['phone']) ? trim($data['phone']) : '';
 
         return $data;
         

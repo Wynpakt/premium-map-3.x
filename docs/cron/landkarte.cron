@@ -1,0 +1,12 @@
+# Collmex sync, then Photon geocoding.
+# Install on the API host, for example:
+#   sudo cp docs/cron/landkarte.cron /etc/cron.d/landkarte
+#   sudo chmod 644 /etc/cron.d/landkarte
+#
+# The repository did not previously ship a cron unit. Without this, changes
+# in Collmex stay off the map until someone runs the two commands by hand.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
+
+15 * * * * www-data cd /var/www/api.landkarte.premium-cola.de && php app/cli.php update >> /var/log/landkarte-sync.log 2>&1
+25 * * * * www-data cd /var/www/api.landkarte.premium-cola.de && php app/cli.php update geo >> /var/log/landkarte-geo.log 2>&1

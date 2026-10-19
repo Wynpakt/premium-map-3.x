@@ -8,7 +8,6 @@ class BaseTask extends \Phalcon\Cli\Task
         
         $country = trim($country);
         
-        // Has to be urlencoded to work with "getCoordinatesViaNominatim"
         $countrys = [
             'DE' => 'Germany',
             'AT' => 'Austria',
@@ -23,26 +22,52 @@ class BaseTask extends \Phalcon\Cli\Task
     }
 
     /**
-     * Method try to locate address through the Openstreetmap Nominatim API
+     * Locate an address via the local Photon instance for that country.
+     *
+     * @param string $countryCode DE, AT or CH
+     * @return array{lat:string,lng:string,street:string,postcode:string,city:string,country:string}|null|false
+     *         Coords, null if not found or unreachable, false if the server asked us to back off
      */
-    public function getCoordinatesViaNominatim($street, $zip, $city, $country){
-        $address_parameters = "street=" . urlencode($street) . "&city=" . urlencode($city) . "&country=" . $country . "&postalcode=" . $zip;
-        $url = "https://nominatim.openstreetmap.org/search.php?format=jsonv2&limit=1&$address_parameters";
-
-        ini_set('user_agent','Mozilla/4.0 (compatible; MSIE 6.0)'); 
-        $response = file_get_contents($url);
-
-        $json = json_decode($response,TRUE); //generate array object from the response from the web
-
-        if(
-            isset($json[0]['lat']) &&
-            isset($json[0]['lon'])
-        ) {
-            return [
-                'lat' => $json[0]['lat'],
-                'lng' => $json[0]['lon']
-            ];
+    public function getCoordinates($street, $zip, $city, $countryCode){
+        $urls = array();
+        if (isset($this->config->photon)) {
+            $urls = $this->config->photon->toArray();
         }
+        if (isset($urls['url']) && $urls['url'] !== '' && empty($urls['default'])) {
+            $urls['default'] = $urls['url'];
+        }
+        $base = PhotonGeocoder::baseUrl($urls, $countryCode);
+        if ($base === null) {
+            echo PHP_EOL . 'Kein Photon-Endpunkt für ' . $countryCode . PHP_EOL;
+            return null;
+        }
+
+        $url = PhotonGeocoder::endpoint($base, $street, $zip, $city, $countryCode);
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'header' => "User-Agent: Premium-Landkarte/3.x (landkarte@premium-cola.de)\r\nAccept: application/json\r\n",
+                'timeout' => 20,
+                'ignore_errors' => true,
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        $status = 0;
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+            $status = (int) $m[1];
+        }
+
+        if ($status === 429) {
+            echo PHP_EOL . 'Photon 429 für ' . $countryCode . PHP_EOL;
+            return false;
+        }
+
+        if ($response === false || $status >= 400) {
+            return null;
+        }
+
+        return PhotonGeocoder::parse(json_decode($response, true));
     }
 
     public function error($msg, $exit = true) {
@@ -82,22 +107,11 @@ class BaseTask extends \Phalcon\Cli\Task
         if($data = $this->collmexGet('ADDRESS_GET')){
             $out = [];
             foreach ($data as $d) {
-                if($d[0] !== "CMXADR") {
+                $mapped = CollmexAddress::fromRow($d);
+                if ($mapped === null) {
                     continue;
                 }
-                $out[] = [
-                    'address_id' => $d[1],
-                    'name' => $d[7],
-                    'firstname' => $d[5],
-                    'surname' => $d[6],
-                    'street' => $d[9],
-                    'zip' => $d[10],
-                    'city' => $d[11],
-                    'web' => $d[28],
-                    'address_group' => $d[31],
-                    'country' => $d[14],
-                    'email' => $d[17]
-                ];
+                $out[] = $mapped;
             }
             //file_put_contents('/tmp/collmexAddressGet.tmp',serialize($out));
             return $out;

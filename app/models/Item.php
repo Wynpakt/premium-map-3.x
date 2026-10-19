@@ -1,6 +1,5 @@
 <?php
 
-use Phalcon\Mvc\Model\Validator\Email as Email;
 use Phalcon\Mvc\Model\Resultset\Simple as Resultset;
 
 class Item extends \Phalcon\Mvc\Model
@@ -94,6 +93,12 @@ class Item extends \Phalcon\Mvc\Model
      * @var integer
      */
     protected $geolocate_count;
+
+    /**
+     *
+     * @var integer
+     */
+    protected $geocode_pending;
 
     /**
      * Method to set the value of field id
@@ -439,25 +444,24 @@ class Item extends \Phalcon\Mvc\Model
         return $this->geolocate_count;
     }
 
+    public function setGeocodePending($geocode_pending)
+    {
+        $this->geocode_pending = $geocode_pending;
+
+        return $this;
+    }
+
+    public function getGeocodePending()
+    {
+        return $this->geocode_pending;
+    }
+
     /**
      * Validations and business logic
      */
     public function validation()
     {
-        // todo... later :)
         return true;
-
-        $this->validate(
-            new Email(
-                array(
-                    'field'    => 'email',
-                    'required' => true,
-                )
-            )
-        );
-        if ($this->validationHasFailed() == true) {
-            return false;
-        }
     }
 
     public function deleteOffertypes() {
@@ -498,31 +502,16 @@ class Item extends \Phalcon\Mvc\Model
     /*
      * Raw query funcktion for output markers without data overhead
      */
-    public static function listMarker($countries = array("DE", "AT", "CH"), $products = array("cola", "bier", "holunder", "muntermate")) {
-        // AND (item.country='DE' OR item.country='AT')
-        $sql_countries = "";
-        if(count($countries) == 1) {
-            $sql_countries = " AND item.country='" . $countries[0] . "'";
-        } else if($countries > 1) {
-            $sql_countries = " AND (item.country='";
-            $sql_countries .= implode($countries, "' OR item.country='");
-            $sql_countries .= "')";
+    public static function listMarker($countries = null, $products = null) {
+        if ($countries === null) {
+            $countries = MarkerQuery::defaultCountries();
         }
-
-        // AND (product.name='cola' OR product.name='bier')
-        $sql_products = "";
-        if(count($products) == 1) {
-            $sql_products = " AND product.name='" . $products[0] . "'";
-        } else if($products > 1) {
-            $sql_products = " AND (product.name='";
-            $sql_products .= implode($products, "' OR product.name='");
-            $sql_products .= "')";
+        if ($products === null) {
+            $products = MarkerQuery::defaultProducts();
         }
-        // Base model
         $item = new Item();
-        $sql = 'SELECT item.id, item.lat, item.lng, ho.offertype_id AS offertype, item.collmex_address_groups FROM item, item_has_offertype ho, item_has_product hp, product WHERE ho.item_id = item.id AND hp.item_id = item.id AND hp.product_id = product.id AND item.lat IS NOT NULL AND item.lng IS NOT NULL' . $sql_countries . $sql_products;
-    
-        // Execute the query
+        $sql = MarkerQuery::sql($countries, $products);
+
         return new Resultset(null,$item,$item->getReadConnection()->query($sql));
     }
 
@@ -591,7 +580,8 @@ class Item extends \Phalcon\Mvc\Model
             'phone' => 'phone',
             'collmex_address_groups' => 'collmex_address_groups',
             'location_checked' => 'location_checked', 
-            'geolocate_count' => 'geolocate_count'
+            'geolocate_count' => 'geolocate_count',
+            'geocode_pending' => 'geocode_pending'
         );
     }
 

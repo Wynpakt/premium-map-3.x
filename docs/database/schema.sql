@@ -38,6 +38,7 @@ CREATE TABLE `item` (
   `collmex_address_groups` varchar(120) NOT NULL,
   `location_checked` tinyint(1) unsigned DEFAULT '0',
   `geolocate_count` int(10) unsigned DEFAULT '0',
+  `geocode_pending` tinyint(1) unsigned NOT NULL DEFAULT '0',
   PRIMARY KEY (`id`),
   UNIQUE KEY `collmex_address_id` (`collmex_address_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1360 DEFAULT CHARSET=utf8;
