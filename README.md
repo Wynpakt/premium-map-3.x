@@ -65,7 +65,42 @@ nano ./app/config/config.php
 
 ## Deploy
 
-Run `rsync -e ssh -rv --exclude='app/config/config.php' app public vendor composer.json composer.lock premium:/var/www/api.landkarte.premium-cola.de/` (replace premium with your access to the prod server) to deploy to production.
+Production is a normal Ubuntu host, not the Compose dev stack. The API lives at `/var/www/api.landkarte.premium-cola.de`, the Angular build at `/var/www/landkarte.premium-cola.de`. Photon for DE, AT and CH listens on `127.0.0.1:2322`, `:2323` and `:2324`. `config.default.php` already points at those URLs. Cron runs the Collmex sync and then geocoding.
+
+### Update an existing host
+
+```sh
+rsync -e ssh -rv --exclude='app/config/config.php' app public composer.json composer.lock docs premium:/var/www/api.landkarte.premium-cola.de/
+ssh premium 'cd /var/www/api.landkarte.premium-cola.de && sudo -u www-data composer install --no-dev --no-interaction && sudo -u www-data php app/migrate.php'
+```
+
+Leave `app/config/config.php` on the server. Install `vendor` there too, so the lockfile is resolved on the host that actually runs PHP.
+
+### Fresh Ubuntu 26.04
+
+The host wants about 16 GB RAM and 50 GB free disk. The Germany Photon index is a 9 GB download.
+
+From this checkout, with `premium` as the SSH host of the new server:
+
+```sh
+rsync -e ssh -rv --exclude='app/config/config.php' --exclude='.git' --exclude='vendor' \
+  ./ premium:/var/www/api.landkarte.premium-cola.de/
+ssh premium 'sudo I_UNDERSTAND=1 bash /var/www/api.landkarte.premium-cola.de/docs/deploy/install-ubuntu-26.04.sh'
+```
+
+The script installs Apache, PHP 8.5, Phalcon 5.23 from PECL, MySQL 8.4, Composer, three Photon 0.5 services and `/etc/cron.d/landkarte`. It writes `app/config/config.php` from `config.default.php` and stores the database password in `/etc/landkarte/db.env`. Collmex and SMTP stay empty until you fill them in. Ubuntu 26.04 ships PHP 8.5 and MySQL 8.4; Phalcon is not packaged, so it is built with PECL. Photon 0.5 stays on Java 11.
+
+The map frontend is the other repository. After `npm run build-stage`:
+
+```sh
+scp -r dist/* dist/.[!.]* premium:/var/www/landkarte.premium-cola.de/
+```
+
+TLS, once DNS for both hostnames points at the server:
+
+```sh
+sudo ENABLE_TLS=1 TLS_EMAIL=you@example.com I_UNDERSTAND=1 bash docs/deploy/install-ubuntu-26.04.sh
+```
 
 ## Run collmex sync
 
@@ -132,7 +167,7 @@ DE, AT and CH each have their own Photon process, because a country dump is one 
 docker compose --profile photon up --build
 ```
 
-The first start downloads the GraphHopper country indexes (`photon-db-de`, `photon-db-at`, `photon-db-ch`) into Docker volumes. That is several gigabytes. The API itself starts without the profile; geocoding then reports that the endpoint is missing.
+The first start downloads the GraphHopper country indexes into Docker volumes. The name `photon-db-<cc>-latest.tar.bz2` is a broken symlink on the mirror (HTTP 404). The entrypoint picks the dated archive instead (`photon-db-de-250720.tar.bz2`, and the same pattern for AT and CH). Germany is about 9 GB compressed, Austria and Switzerland about 1 GB each. The API itself starts without the profile; geocoding then reports that the endpoint is missing.
 
 - Only items with `geolocate_count < 20` are tried, and only when `lat`/`lng` is empty or `geocode_pending` is 1. Every attempt increments the counter. An item Photon cannot find 20 times is given up on. If the address changed, the previous pin stays until a new coordinate arrives — the marker does not disappear in between.
 - To retry given-up rows and pending address changes: `php app/cli.php update geo-reset`, then `php app/cli.php update geo`.
@@ -180,54 +215,4 @@ Search (`GET /search/<text>`) matches name, city, zip or street, up to 20 rows, 
 
 ```bash
 mysql landkarte < /var/backups/rsnapshot/*/mysql/*.sql
-```
-
-## Installation on ubuntu-server 16.04
-
-## install phalcon framework
-
-```sh
-sudo apt-get install -y gcc make re2c libpcre3-dev php-dev build-essential php-zip
-```
-
-### Install composer
-
-```sh
-sudo curl -sS http://getcomposer.org/installer | php
-sudo mv composer.phar /usr/local/bin/composer
-```
-
-### Install zephir
-
-```sh
-sudo composer global require "phalcon/zephir:dev-master"
-```
-
-### Install phalcon dev tool
-
-```sh
-sudo composer require "phalcon/devtools" -d /usr/local/bin/
-sudo ln -s /usr/local/bin/vendor/phalcon/devtools/phalcon.php /usr/bin/phalcon
-```
-
-### Install phalconphp with php7
-
-```sh
-sudo git clone https://github.com/phalcon/cphalcon.git -b 2.1.x --single-branch
-cd cphalcon/
-sudo ~/.composer/vendor/bin/zephir build --backend=ZendEngine3
-sudo echo "extension=phalcon.so" >> /etc/php/7.0/fpm/conf.d/20-phalcon.ini
-sudo echo "extension=phalcon.so" >> /etc/php/7.0/cli/conf.d/20-phalcon.ini
-```
-
-### restart php-fpm
-
-```sh
-sudo service php7.0-fpm restart
-```
-
-## Install npm dependencies
-
-```sh
-composer install
 ```
