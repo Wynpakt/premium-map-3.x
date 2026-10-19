@@ -42,6 +42,8 @@ curl -fsSL -A "$UA" -o "${archive}.md5" "${BASE}/${file}.md5"
 
 echo "Extracting ${file} into ${DEST}"
 tar -xjf "$archive" -C "$tmp"
+# Drop the archive before moving the index so peak disk stays near the final ~15 GB.
+rm -f "$archive" "${archive}.md5"
 
 mkdir -p "$(dirname "$DEST")"
 rm -rf "$DEST"

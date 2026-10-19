@@ -15,7 +15,10 @@
 #   MAP_HOST=landkarte.premium-cola.de
 #   DB_NAME=landkarte
 #   DB_USER=landkarte
-#   SKIP_PHOTON=1          skip the multi-gigabyte index download
+#   SKIP_PHOTON=1          skip the index download (~15 GB under /var/lib/photon)
+#   SKIP_FRONTEND=1        skip cloning and building the Angular map
+#   FRONTEND_REPO=https://github.com/Wynpakt/premium-map-frontend.git
+#   FRONTEND_REF=master
 #   ENABLE_TLS=1 TLS_EMAIL=ops@example.com
 #
 # Collmex and SMTP stay empty. Fill them in app/config/config.php afterwards.
@@ -29,8 +32,8 @@ fi
 
 if [ "${I_UNDERSTAND:-}" != "1" ]; then
   echo "Refusing to install system packages without I_UNDERSTAND=1." >&2
-  echo "This installs Apache, MySQL, PHP 8.5, Phalcon 5.23 and Photon." >&2
-  echo "The Germany index is about 9 GB compressed. Plan on 16 GB RAM and 50 GB free disk." >&2
+  echo "This installs Apache, MySQL, PHP 8.5, Phalcon 5.23, the Angular map and Photon." >&2
+  echo "Photon indexes need about 15 GB under /var. Prefer 8 GB+ RAM for the DE index." >&2
   exit 1
 fi
 
@@ -44,6 +47,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 APP_DIR="${APP_DIR:-/var/www/api.landkarte.premium-cola.de}"
 MAP_DIR="${MAP_DIR:-/var/www/landkarte.premium-cola.de}"
+FRONTEND_SRC="${FRONTEND_SRC:-/var/src/premium-map-frontend}"
+FRONTEND_REPO="${FRONTEND_REPO:-https://github.com/Wynpakt/premium-map-frontend.git}"
+FRONTEND_REF="${FRONTEND_REF:-master}"
 API_HOST="${API_HOST:-api.landkarte.premium-cola.de}"
 MAP_HOST="${MAP_HOST:-landkarte.premium-cola.de}"
 DB_NAME="${DB_NAME:-landkarte}"
@@ -53,6 +59,7 @@ if ! [[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ && "$DB_USER" =~ ^[A-Za-z0-9_]+$ ]]; then
   exit 1
 fi
 SKIP_PHOTON="${SKIP_PHOTON:-0}"
+SKIP_FRONTEND="${SKIP_FRONTEND:-0}"
 ENABLE_TLS="${ENABLE_TLS:-0}"
 
 export DEBIAN_FRONTEND=noninteractive
@@ -60,13 +67,19 @@ export DEBIAN_FRONTEND=noninteractive
 mem_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
 disk_gb="$(df -BG --output=avail /var | tail -1 | tr -dc '0-9')"
 echo "RAM ${mem_mb} MB, free on /var: ${disk_gb} GB"
-if [ "$disk_gb" -lt 50 ] && [ "$SKIP_PHOTON" != "1" ]; then
-  echo "Need 50 GB free on /var for the Photon indexes (have ${disk_gb} GB)." >&2
+# Indexes land at ~15 GB. Peak during download+extract is a bit higher; 20 GB free is enough.
+if [ "$disk_gb" -lt 20 ] && [ "$SKIP_PHOTON" != "1" ]; then
+  echo "Need 20 GB free on /var for the Photon indexes (~15 GB installed; have ${disk_gb} GB)." >&2
   echo "Set SKIP_PHOTON=1 to install the API without geocoding data." >&2
   exit 1
 fi
-if [ "$mem_mb" -lt 12000 ]; then
-  echo "Warning: under 12 GB RAM. DE Photon is happier with a 4 GB heap on a 16 GB host."
+if [ "$mem_mb" -lt 4000 ] && [ "$SKIP_PHOTON" != "1" ] && [ "${FORCE_PHOTON:-0}" != "1" ]; then
+  echo "Photon needs more RAM than this host reports (${mem_mb} MB)." >&2
+  echo "Use SKIP_PHOTON=1, or FORCE_PHOTON=1 to try anyway (likely to OOM)." >&2
+  exit 1
+fi
+if [ "$mem_mb" -lt 12000 ] && [ "$SKIP_PHOTON" != "1" ]; then
+  echo "Warning: under 12 GB RAM. Photon heaps will be reduced."
 fi
 
 echo "Installing packages"
@@ -86,6 +99,7 @@ apt-get install -y \
   composer \
   mysql-server \
   openjdk-11-jre-headless \
+  git \
   curl \
   ca-certificates \
   bzip2 \
@@ -117,15 +131,42 @@ fi
 
 install -d -o www-data -g www-data "${APP_DIR}/app/cache"
 install -d -o www-data -g www-data "$MAP_DIR"
-if [ ! -f "${MAP_DIR}/index.html" ]; then
-  cat > "${MAP_DIR}/index.html" <<'HTML'
-<!DOCTYPE html>
-<html lang="de">
-<meta charset="utf-8">
-<title>Landkarte</title>
-<p>Frontend noch nicht ausgerollt.</p>
-HTML
-  chown www-data:www-data "${MAP_DIR}/index.html"
+
+if [ "$SKIP_FRONTEND" != "1" ]; then
+  echo "Installing Node 24 for the Angular map build"
+  if ! command -v node >/dev/null || ! node -v | grep -qE '^v2[4-9]\.'; then
+    curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+    apt-get install -y nodejs
+  fi
+  node -v
+  npm -v
+
+  echo "Fetching frontend ${FRONTEND_REPO} (${FRONTEND_REF})"
+  install -d "$(dirname "$FRONTEND_SRC")"
+  if [ -d "${FRONTEND_SRC}/.git" ]; then
+    git -C "$FRONTEND_SRC" fetch --depth 1 origin "$FRONTEND_REF"
+    git -C "$FRONTEND_SRC" checkout -B "$FRONTEND_REF" "FETCH_HEAD"
+  else
+    rm -rf "$FRONTEND_SRC"
+    git clone --depth 1 --branch "$FRONTEND_REF" "$FRONTEND_REPO" "$FRONTEND_SRC"
+  fi
+
+  echo "Building frontend into ${MAP_DIR}"
+  (
+    cd "$FRONTEND_SRC"
+    npm ci
+    npx ng build --configuration=production
+  )
+  if [ ! -f "${FRONTEND_SRC}/dist/index.html" ]; then
+    echo "Frontend build produced no dist/index.html" >&2
+    exit 1
+  fi
+  rsync -a --delete \
+    --exclude '.git/' \
+    "${FRONTEND_SRC}/dist/" "${MAP_DIR}/"
+  chown -R www-data:www-data "$MAP_DIR"
+else
+  echo "SKIP_FRONTEND=1 — leaving ${MAP_DIR} as-is"
 fi
 
 if [ ! -f "${APP_DIR}/app/config/config.php" ]; then
@@ -217,14 +258,35 @@ if [ "$SKIP_PHOTON" != "1" ]; then
   fi
   install -m 755 "${SCRIPT_DIR}/photon/run.sh" /opt/photon/run.sh
   install -m 644 "${SCRIPT_DIR}/photon/photon@.service" /etc/systemd/system/photon@.service
-  if [ "$mem_mb" -lt 12000 ]; then
+  if [ "$mem_mb" -lt 6000 ]; then
+    cat > /etc/photon/de.env <<'EOF'
+PHOTON_DATA=/var/lib/photon/de
+PHOTON_PORT=2322
+PHOTON_XMS=512m
+PHOTON_XMX=1g
+EOF
+    cat > /etc/photon/at.env <<'EOF'
+PHOTON_DATA=/var/lib/photon/at
+PHOTON_PORT=2323
+PHOTON_XMS=256m
+PHOTON_XMX=512m
+EOF
+    cat > /etc/photon/ch.env <<'EOF'
+PHOTON_DATA=/var/lib/photon/ch
+PHOTON_PORT=2324
+PHOTON_XMS=256m
+PHOTON_XMX=512m
+EOF
+  elif [ "$mem_mb" -lt 12000 ]; then
     sed -e 's/^PHOTON_XMS=2g/PHOTON_XMS=1g/' -e 's/^PHOTON_XMX=4g/PHOTON_XMX=2g/' \
       "${SCRIPT_DIR}/photon/de.env" > /etc/photon/de.env
+    install -m 644 "${SCRIPT_DIR}/photon/at.env" /etc/photon/at.env
+    install -m 644 "${SCRIPT_DIR}/photon/ch.env" /etc/photon/ch.env
   else
     install -m 644 "${SCRIPT_DIR}/photon/de.env" /etc/photon/de.env
+    install -m 644 "${SCRIPT_DIR}/photon/at.env" /etc/photon/at.env
+    install -m 644 "${SCRIPT_DIR}/photon/ch.env" /etc/photon/ch.env
   fi
-  install -m 644 "${SCRIPT_DIR}/photon/at.env" /etc/photon/at.env
-  install -m 644 "${SCRIPT_DIR}/photon/ch.env" /etc/photon/ch.env
   for cc in de at ch; do
     bash "${SCRIPT_DIR}/photon/fetch-index.sh" "$cc" "/var/lib/photon/${cc}"
     chown -R photon:photon "/var/lib/photon/${cc}"
@@ -270,7 +332,8 @@ echo
 echo
 echo "Next:"
 echo "  1. Put Collmex user, password and customer_id into ${APP_DIR}/app/config/config.php"
-echo "  2. Roll out the Angular build into ${MAP_DIR} (npm run build-stage in the frontend repo)"
-echo "  3. Once DNS points here: ENABLE_TLS=1 TLS_EMAIL=... I_UNDERSTAND=1 bash $0"
+echo "  2. Once DNS points here: ENABLE_TLS=1 TLS_EMAIL=... I_UNDERSTAND=1 bash $0"
+echo "  3. Rebuild the map later: I_UNDERSTAND=1 SKIP_PHOTON=1 bash $0"
 echo "Database password: /etc/landkarte/db.env"
+echo "Frontend source: ${FRONTEND_SRC} → ${MAP_DIR}"
 echo "Geocoding: php ${APP_DIR}/app/cli.php update geo   (cron does this hourly)"
