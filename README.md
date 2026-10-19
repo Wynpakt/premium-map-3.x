@@ -2,17 +2,40 @@
 
 Premium map based on leaflet and openstreetmap tiles
 
-## Run local development server
+## Run local development server (Docker)
+
+Requires Docker Compose. The app targets **PHP 8.5 + Phalcon 5.23** and Symfony 8.1.
+
+```sh
+docker compose up --build
+```
+
+Then open http://localhost:8085
+
+On first start the entrypoint creates `app/config/config.php` from `app/config/config.docker.php`, runs `composer install`, and MySQL loads `docs/database/schema.sql`.
+
+Smoke check:
+
+```sh
+curl -s 'http://localhost:8085/item/list?types[]=laeden&countries[]=DE&products[]=cola'
+```
+
+(Empty JSON list with seed schema only is fine — there are no items yet.)
+
+Stop / wipe DB:
+
+```sh
+docker compose down
+docker compose down -v   # also drop the MySQL volume
+```
+
+### Alternative: Vagrant
 
 ```sh
 vagrant up
 ```
 
-Now fire up your browser and open http://localhost:8085
-
-Copy `app/config/config.vagrant.default.php` to `app/config/config.php` as a starting point with working database config.
-
-### Restart all over again
+Open http://localhost:8085. Copy `app/config/config.vagrant.default.php` to `app/config/config.php` if needed.
 
 ```sh
 vagrant destroy --force && vagrant up
@@ -50,8 +73,11 @@ Run `rsync -e ssh -rv --exclude='app/config/config.php' app public vendor compos
 # Fetch new item from collmex database
 php app/cli.php update
 
-# Enrich items with geolocation information
+# Enrich items with geolocation information (local Photon, see below)
 php app/cli.php update geo
+
+# Queue rows that gave up (geolocate_count >= 20) or still have a pending address change
+php app/cli.php update geo-reset
 ```
 
 ## Add, list, delete products
@@ -98,33 +124,43 @@ The group ids are hard-coded in `UpdateTask::initialize()`, except for the produ
 
 ### Coordinates (criterion 7)
 
-Coordinates are looked up via OpenStreetMap Nominatim by `php app/cli.php update geo`.
+Coordinates are looked up via a local [Photon 0.5](https://github.com/komoot/photon) instance by `php app/cli.php update geo`. Photon serves the same OpenStreetMap data as Nominatim, without the public 1-request-per-second limit. Street names in the popup still come from Collmex, so they will not start matching Google Maps.
 
-- Only items with `geolocate_count < 20` are tried. Every attempt increments the counter, whether it succeeds or not. An item that Nominatim cannot find 20 times is given up on and stays sorted out until its street, zip or city changes in Collmex (this resets the counter) or the counter is reset manually in the database.
+DE, AT and CH each have their own Photon process, because a country dump is one Elasticsearch index and Photon 0.5 does not merge them:
+
+```sh
+docker compose --profile photon up --build
+```
+
+The first start downloads the GraphHopper country indexes (`photon-db-de`, `photon-db-at`, `photon-db-ch`) into Docker volumes. That is several gigabytes. The API itself starts without the profile; geocoding then reports that the endpoint is missing.
+
+- Only items with `geolocate_count < 20` are tried, and only when `lat`/`lng` is empty or `geocode_pending` is 1. Every attempt increments the counter. An item Photon cannot find 20 times is given up on. If the address changed, the previous pin stays until a new coordinate arrives — the marker does not disappear in between.
+- To retry given-up rows and pending address changes: `php app/cli.php update geo-reset`, then `php app/cli.php update geo`.
 - Items whose only offer type is *Sprecher* are located by city only.
 - An item that has not been geocoded yet (for example right after the first sync) is sorted out until `update geo` has run.
 
+Config key `photon` maps country codes to base URLs. Inside Compose that is `http://photon-de:2322` (and `-at`, `-ch`). From the host the published ports are 2322, 2323 and 2324.
+
+### Collmex sync schedule
+
+The map does not read Collmex on each request. `docs/cron/landkarte.cron` runs `update` and then `update geo` every hour. Copy it to `/etc/cron.d/landkarte` on the API host. The repository did not previously contain a cron unit, so a Collmex edit stays invisible until those commands run.
+
 #### Checking whether an address can be located
 
-Anyone with access to the Collmex data can simulate the lookup in a browser, using the same query as `BaseTask::getCoordinatesViaNominatim`:
+With Photon running, the same query the sync sends is:
 
 ```
-https://nominatim.openstreetmap.org/search.php?format=jsonv2&limit=1&street=STREET+HOUSENUMBER&city=CITY&country=Germany&postalcode=ZIP
+http://127.0.0.1:2322/api?limit=1&lang=de&q=STREET+ZIP+CITY+Germany
 ```
 
-- `street`: the Collmex street field as is, spaces replaced by `+` (for example `Pariser+Platz+1`).
-- `postalcode`: digits only, as the sync strips all other characters from the zip.
-- `country`: `Germany` for `DE`, `Austria` for `AT`, `Switzerland` for `CH` (see `BaseTask::countryMapper`).
-- For items whose only offer type is *Sprecher*, leave `street=` and `postalcode=` empty, as only the city is used for them.
+Use port 2323 and `Austria` for AT, port 2324 and `Switzerland` for CH. For speakers, omit street and zip. A hit has `features[0].geometry.coordinates` as `[lon, lat]`. An empty `features` array is why the item is missing. Typically that is a typo or a missing house number, zip or city; correcting it in Collmex resets the retry counter on the next sync and sets `geocode_pending`.
 
-If the response contains `"lat"` and `"lon"`, the address can be located. If it is just `[]`, Nominatim does not find the address, which is why the item is missing on the map. Typically this is a typo or a missing house number, zip or city, and correcting it in Collmex fixes it. The next sync resets the retry counter for changed addresses.
-
-If the address is found in the browser but is still missing on the map, the lookup in the app may have failed temporarily or given up after 20 attempts. Check `lat`, `lng` and `geolocate_count` of the item in the `item` table. The lookup is meant for occasional manual checks, Nominatim blocks heavy usage.
+If Photon finds the address but the map still does not, check `lat`, `lng`, `geolocate_count` and `geocode_pending` on the `item` row.
 
 ### Things to know
 
-- **Product names.** The product filter compares the requested names with `product.name` in the database (case-insensitive), so the names the front-end sends (`cola`, `bier`, `frohlunder`, `muntermate`) have to match the product names in the database. They do for the seed data in `docs/database/schema.sql`. Note that the fallback used when `products` is omitted from the request lists `holunder` instead of `frohlunder`, so a request without `products` would never match Frohlunder items.
-- **Checks that look like criteria but are not.** The required-fields check in `addressCleanup()` uses `isset()`, so an address with an empty city or zip passes (it will most likely just fail geocoding). The empty-groups check in `checkAddressGroups()` can never trigger either, because `explode()` always returns at least one element. An invalid e-mail address does not sort out an item, the e-mail is just not stored.
+- **Product names.** The product filter compares the requested names with `product.name` in the database. The seed data uses `Cola`, `Bier`, `Frohlunder`, `Muntermate`, and the front-end sends `cola`, `bier`, `frohlunder`, `muntermate`. The table charset is `utf8`, whose default collation compares those case-insensitively. The default product list, used when `products` is omitted, is `frohlunder` (the old default `holunder` matched nothing).
+- **Checks that look like criteria but are not.** The required-fields check in `addressCleanup()` uses `isset()`, so an address with an empty city or zip passes (it will most likely just fail geocoding). The empty-groups check in `checkAddressGroups()` can never trigger either, because `explode()` always returns at least one element. An invalid e-mail address does not sort out an item, the e-mail is just not stored. Phone is stored from Collmex field 16 (CSV index 15) and does not sort an item out either.
 - **Other endpoints.** `/item/all`, `/search/<string>` and `/item/<id>` apply fewer checks than `/item/list` (for example none of them looks at groups 16/93, coordinates or country). They are not what the map shows, so they are not relevant for the criteria above.
 
 ### Checklist: why is a shop missing on the map?
@@ -132,9 +168,11 @@ If the address is found in the browser but is still missing on the map, the look
 1. Is the Collmex address in group 124, and *not* in 93 or 16?
 2. Does it have at least one offer type group (8, 9, 7, 112) **and** at least one product group (20, 21, 29, 33)?
 3. Was `php app/cli.php update` run after the change in Collmex, followed by `php app/cli.php update geo`?
-4. Does the item have `lat`/`lng` in the `item` table? If not, check `geolocate_count` (20 = given up) and whether the address is valid.
+4. Does the item have `lat`/`lng` in the `item` table? If not, check `geolocate_count` (20 = given up) and `geocode_pending`, and whether Photon is running for that country.
 5. Is the country `DE`, `AT` or `CH`?
 6. Does the request really include the item's offer type and product? (The default front-end request includes all of them.)
+
+Search (`GET /search/<text>`) matches name, city, zip or street, up to 20 rows, with a bound parameter. Duplicate candidates are listed by `php app/cli.php update duplicates` (same normalized address, or the same rounded pin). Nothing is hidden. `php app/cli.php update streets` prints Collmex streets that Photon resolved to a different OSM street. A new shop that is not a marker yet can be mailed via `POST /feedback/report` (`email`, `feedback`, `name`, optional `street`, `zip`, `city`, `country`).
 
 ## Production
 

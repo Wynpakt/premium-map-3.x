@@ -41,6 +41,11 @@
         'action' => 'zipmail'
     ]);
 
+    $router->addPost('/feedback/report',[
+        'controller' => 'feedback',
+        'action' => 'report'
+    ]);
+
     /*
      * Not found 404 route
      */

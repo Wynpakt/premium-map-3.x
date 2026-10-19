@@ -2,12 +2,6 @@
 
 class FeedbackController extends ControllerBase
 {
-    // https://stackoverflow.com/questions/834303/startswith-and-endswith-functions-in-php
-    public function startsWith($haystack, $needle) {
-        // search backwards starting from haystack length characters from the end
-        return $needle === "" || strrpos($haystack, $needle, -strlen($haystack)) !== false;
-    }
-
     public function indexAction() {}
 
     public function zipmailAction() {
@@ -46,22 +40,8 @@ class FeedbackController extends ControllerBase
                     $from = $_POST['email'];
                 }
 
-                $contacts_file = file_get_contents('../app/config/feedback.txt');
-                $contacts_line = explode("\n", $contacts_file);
-                $contacts = array();
-                foreach($contacts_line as $contact) {
-                    $contacts[] = explode(";", $contact);
-                }
-
-                // Default email address
-                $contact_email = "anna-lilja@premium-kollektiv.de";
-
-                // Set specific email address if available
-                foreach($contacts as $contact) {
-                    if($country == $contact[0] && $this->startsWith($zip, $contact[1])) {
-                        $contact_email = $contact[2];
-                    }
-                }
+                $contacts = FeedbackRouter::parseLines(file_get_contents('../app/config/feedback.txt'));
+                $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
                 if($this->mail($contact_email, $subject, $feedback, $from)) {
                     return $this->jsonResponse([
@@ -76,6 +56,50 @@ class FeedbackController extends ControllerBase
 
         }
         
+    }
+
+    /**
+     * Report a shop that is not on the map yet. No item id required.
+     */
+    public function reportAction() {
+        if (!isset($_POST['email'], $_POST['feedback'], $_POST['name'])) {
+            return $this->jsonResponseError('Name, E-Mail und Nachricht werden gebraucht.');
+        }
+
+        $email = trim((string) $_POST['email']);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return $this->jsonResponseError('Die E-Mail-Adresse ist ungültig.');
+        }
+
+        $name = trim(strip_tags((string) $_POST['name']));
+        $street = isset($_POST['street']) ? trim(strip_tags((string) $_POST['street'])) : '';
+        $zip = isset($_POST['zip']) ? trim(strip_tags((string) $_POST['zip'])) : '';
+        $city = isset($_POST['city']) ? trim(strip_tags((string) $_POST['city'])) : '';
+        $country = isset($_POST['country']) ? strtoupper(trim(strip_tags((string) $_POST['country']))) : '';
+        $text = trim(strip_tags((string) $_POST['feedback']));
+
+        if ($name === '' || $text === '') {
+            return $this->jsonResponseError('Name und Nachricht dürfen nicht leer sein.');
+        }
+
+        $contacts = FeedbackRouter::parseLines(file_get_contents('../app/config/feedback.txt'));
+        $contact_email = FeedbackRouter::route($contacts, $country, $zip);
+
+        $body = $text
+            . "\n\n===========================================\n\n"
+            . "Gemeldete Verkaufsstelle (noch nicht auf der Landkarte):\n"
+            . $name . "\n"
+            . $street . "\n"
+            . $zip . ' ' . $city . "\n"
+            . $country . "\n";
+
+        if ($this->mail($contact_email, 'Premium Landkarte: neue Verkaufsstelle ' . $name, $body, $email)) {
+            return $this->jsonResponse(array(
+                'msg' => 'Nachricht wurde an ' . $contact_email . ' versendet.',
+            ));
+        }
+
+        return $this->jsonResponseError('Nachricht konnte nicht gesendet werden, weil die eMail nicht rausging.');
     }
 
 }

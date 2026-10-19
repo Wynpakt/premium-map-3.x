@@ -59,56 +59,53 @@ class ItemController extends ControllerBase
     }
 
     public function apiSearchAction() {
-        if($string = $this->dispatcher->getParam('string')) {
-            $string = preg_replace('/[^0-9a-zA-Z ßäöüÄÖÜé\-_]/', '', $string);
-
-            if($items = Item::rawSql('SELECT * FROM item WHERE name LIKE REPLACE("' . $string . '%", " ", "%") AND name LIKE REPLACE("%' . $string . '%", " ", "%") LIMIT 0,3')) {
-                $out = [];
-                foreach ($items as $item) {
-                    $street = $item->street;
-
-                    // Skip if no offertype is set
-                    if(count($item->offertypes) == 0) {
-                        continue;
-                    }
-                    
-                    // Skip if no product is set
-                    if(count($item->products) == 0) {
-                        continue;
-                    }
-
-                    $offertypes = [];
-                    foreach ($item->offertypes as $ot) {
-                        $offertypes[] = $ot->id;
-                    }
-                    /*
-                     * if only speaker dont send the streenname
-                     */
-                    if(count($item->offertypes) == 1 && $item->offertypes[0]->id == 3) {
-                        $street = '';
-                    }
-                    $out[] = [
-                        'id' => (int)$item->id,
-                        'name' => $item->name.'',
-                        'street' => $street.'',
-                        'city' => $item->city.'',
-                        'zip' => $item->zip.'',
-                        'web' => $item->web.'',
-                        'email' => $item->email.'',
-                        'uri' => $item->id,
-                        'lat' => $item->lat,
-                        'lng' => $item->lng,
-                        'offertypes' => $offertypes
-                    ];
-                }
-
-                return $this->jsonResponse([
-                    'items' => $out,
-                    'search' => $string
-                ]);
-            }
+        $string = $this->dispatcher->getParam('string');
+        $string = is_string($string) ? trim($string, " \t\n\r/") : '';
+        if ($string === '') {
+            return $this->jsonResponse(array('items' => array(), 'search' => ''));
         }
-        return $this->jsonResponse([]);
+
+        $item = new Item();
+        $result = $item->getReadConnection()->query(
+            SearchQuery::sql(),
+            array('q' => SearchQuery::like($string))
+        );
+        $items = new \Phalcon\Mvc\Model\Resultset\Simple(null, $item, $result);
+
+        $out = array();
+        foreach ($items as $itemRow) {
+            if (count($itemRow->offertypes) == 0 || count($itemRow->products) == 0) {
+                continue;
+            }
+
+            $street = $itemRow->street;
+            $offertypes = array();
+            foreach ($itemRow->offertypes as $ot) {
+                $offertypes[] = $ot->id;
+            }
+            if (count($itemRow->offertypes) == 1 && $itemRow->offertypes[0]->id == 3) {
+                $street = '';
+            }
+            $out[] = array(
+                'id' => (int) $itemRow->id,
+                'name' => $itemRow->name . '',
+                'street' => $street . '',
+                'city' => $itemRow->city . '',
+                'zip' => $itemRow->zip . '',
+                'web' => $itemRow->web . '',
+                'email' => $itemRow->email . '',
+                'phone' => $itemRow->phone . '',
+                'uri' => $itemRow->id,
+                'lat' => $itemRow->lat,
+                'lng' => $itemRow->lng,
+                'offertypes' => $offertypes
+            );
+        }
+
+        return $this->jsonResponse(array(
+            'items' => $out,
+            'search' => $string
+        ));
     }
 
     /**
@@ -135,7 +132,7 @@ class ItemController extends ControllerBase
                 $countries = $_GET['countries'];
             }
 
-            $products = array("cola", "bier", "holunder", "muntermate");
+            $products = array("cola", "bier", "frohlunder", "muntermate");
             if(isset($_GET['products'])) {
                 $products = $_GET['products'];
             }
@@ -239,6 +236,7 @@ class ItemController extends ControllerBase
                     'zip' => $item->zip.'',
                     'web' => $item->web.'',
                     'email' => $item->email.'',
+                    'phone' => $item->phone.'',
                     'uri' => $item->id
                 ]);
             }
@@ -278,12 +276,13 @@ class ItemController extends ControllerBase
         }
 
         $paginator = new Paginator(array(
-            "data" => $item,
+            "model" => "Item",
+            "parameters" => $parameters,
             "limit"=> 10,
             "page" => $numberPage
         ));
 
-        $this->view->page = $paginator->getPaginate();
+        $this->view->page = $paginator->paginate();
     }
 
     /**
