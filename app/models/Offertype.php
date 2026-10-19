@@ -106,8 +106,4 @@ class Offertype extends \Phalcon\Mvc\Model
         */
     }
 
-    public function getSource() {
-        return 'offertype';
-    }
-
 }

@@ -64,8 +64,6 @@ class ItemHasProduct extends \Phalcon\Mvc\Model
     {
         $this->belongsTo('item_id', 'Item', 'id', array('alias' => 'Item'));
         $this->belongsTo('product_id', 'Product', 'id', array('alias' => 'Product'));
-        $this->belongsTo('item_id', 'Item', 'id', NULL);
-        $this->belongsTo('product_id', 'Product', 'id', NULL);
     }
 
 }

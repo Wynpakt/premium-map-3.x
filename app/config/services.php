@@ -1,13 +1,13 @@
 <?php
 
-use Phalcon\Config;
-use Phalcon\DI\FactoryDefault;
+use Phalcon\Di\FactoryDefault;
 use Phalcon\Mvc\View;
 use Phalcon\Mvc\Url as UrlResolver;
 use Phalcon\Db\Adapter\Pdo\Mysql as DbAdapter;
 use Phalcon\Mvc\View\Engine\Volt as VoltEngine;
-use Phalcon\Mvc\Model\Metadata\Memory as MetaDataAdapter;
-use Phalcon\Session\Adapter\Files as SessionAdapter;
+use Phalcon\Mvc\Model\MetaData\Memory as MetaDataAdapter;
+use Phalcon\Session\Manager as SessionManager;
+use Phalcon\Session\Adapter\Stream as SessionStream;
 
 /**
  * The FactoryDefault Dependency Injector automatically register the right services providing a full stack framework
@@ -77,7 +77,11 @@ $di->set('modelsMetadata', function () {
  * Start the session the first time some component request the session service
  */
 $di->set('session', function () {
-    $session = new SessionAdapter();
+    $session = new SessionManager();
+    $files = new SessionStream(array(
+        'savePath' => sys_get_temp_dir(),
+    ));
+    $session->setAdapter($files);
     $session->start();
 
     return $session;

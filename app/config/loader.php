@@ -1,15 +1,18 @@
 <?php
 
-$loader = new \Phalcon\Loader();
-
 /**
- * We're a registering a set of directories taken from the configuration file
+ * App classes (controllers, models, lib). Phalcon's own loader is not used.
  */
-$loader->registerDirs(
-    array(
+spl_autoload_register(function ($class) use ($config) {
+    foreach ([
         $config->application->controllersDir,
-        $config->application->modelsDir
-    )
-)->register();
-
-
+        $config->application->modelsDir,
+        dirname($config->application->modelsDir) . '/lib/',
+    ] as $dir) {
+        $file = $dir . $class . '.php';
+        if (is_readable($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});

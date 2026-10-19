@@ -11,6 +11,8 @@ try {
      */
     $config = include __DIR__ . "/../app/config/config.php";
 
+    require __DIR__ . "/../vendor/autoload.php";
+
     /**
      * Read auto-loader
      */
@@ -26,7 +28,8 @@ try {
      */
     $application = new \Phalcon\Mvc\Application($di);
 
-    echo $application->handle()->getContent();
+    $uri = isset($_GET['_url']) ? $_GET['_url'] : (isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/');
+    echo $application->handle($uri)->getContent();
 
 } catch (\Exception $e) {
     echo $e->getMessage();

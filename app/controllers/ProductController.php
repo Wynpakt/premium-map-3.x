@@ -45,12 +45,13 @@ class ProductController extends ControllerBase
         }
 
         $paginator = new Paginator(array(
-            "data" => $product,
+            "model" => "Product",
+            "parameters" => $parameters,
             "limit"=> 10,
             "page" => $numberPage
         ));
 
-        $this->view->page = $paginator->getPaginate();
+        $this->view->page = $paginator->paginate();
     }
 
     /**

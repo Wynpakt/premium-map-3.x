@@ -1,0 +1,7 @@
+.git
+.vagrant
+vendor
+app/cache
+app/config/config.php
+*.log
+.DS_Store

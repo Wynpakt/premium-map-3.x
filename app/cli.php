@@ -21,14 +21,17 @@ defined('APPLICATION_PATH')
 || define('APPLICATION_PATH', realpath(dirname(__FILE__)));
 
 /**
- * Register the autoloader and tell it to register the tasks directory
+ * App classes are loaded here. Phalcon's own loader is not used.
  */
-$loader = new \Phalcon\Loader();
-$loader->registerDirs([
-    APPLICATION_PATH . '/tasks',
-    APPLICATION_PATH . '/controllers',
-    APPLICATION_PATH . '/models'
-])->register();
+spl_autoload_register(function ($class) {
+    foreach (['/tasks/', '/models/', '/controllers/', '/lib/'] as $dir) {
+        $file = APPLICATION_PATH . $dir . $class . '.php';
+        if (is_readable($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});
 
 // Load the configuration file (if any)
 if (is_readable(APPLICATION_PATH . '/config/config.php')) {
@@ -66,7 +69,7 @@ define('CURRENT_ACTION', (isset($argv[2]) ? $argv[2] : null));
 try {
     // Handle incoming arguments
     $console->handle($arguments);
-} catch (\Phalcon\Exception $e) {
+} catch (\Throwable $e) {
     echo $e->getMessage();
     exit(255);
 }

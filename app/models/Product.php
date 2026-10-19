@@ -121,8 +121,7 @@ class Product extends \Phalcon\Mvc\Model
 
     public function initialize()
     {
-        $this->hasMany('id', 'Item_has_product', 'product_id', array('alias' => 'Item_has_product'));
-        $this->hasMany('id', 'ItemHasProduct', 'product_id', NULL);
+        $this->hasMany('id', 'ItemHasProduct', 'product_id', array('alias' => 'ItemHasProduct'));
     }
 
 }

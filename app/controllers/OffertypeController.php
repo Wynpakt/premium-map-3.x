@@ -45,12 +45,13 @@ class OffertypeController extends ControllerBase
         }
 
         $paginator = new Paginator(array(
-            "data" => $offertype,
+            "model" => "Offertype",
+            "parameters" => $parameters,
             "limit"=> 10,
             "page" => $numberPage
         ));
 
-        $this->view->page = $paginator->getPaginate();
+        $this->view->page = $paginator->paginate();
     }
 
     /**

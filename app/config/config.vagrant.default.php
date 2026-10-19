@@ -1,6 +1,6 @@
 <?php
 
-return new \Phalcon\Config([
+return new \Phalcon\Config\Config([
         'database' => [
         'adapter'     => 'Mysql',
         'host'        => 'localhost',
@@ -30,5 +30,10 @@ return new \Phalcon\Config([
         'user' => '',
         'pass' => '',
         'from' => ['landkarte@premium-cola.de' => 'Premium Landkarte']
+    ],
+    'photon' => [
+        'DE' => 'http://127.0.0.1:2322',
+        'AT' => 'http://127.0.0.1:2323',
+        'CH' => 'http://127.0.0.1:2324',
     ]
 ]);

@@ -1,10 +1,13 @@
 <?php
 
 use Phalcon\Mvc\Controller;
+use Symfony\Component\Mailer\Mailer;
+use Symfony\Component\Mailer\Transport;
+use Symfony\Component\Mime\Address;
+use Symfony\Component\Mime\Email;
 
 class ControllerBase extends Controller
 {
-    public $mail_transport;
     public $mail_from;
     public $mail_loaded;
     public $mail_mailer;
@@ -13,15 +16,11 @@ class ControllerBase extends Controller
 
         if($this->mail_loaded !== true) {
 
-            require_once '../vendor/autoload.php';
-
-            $this->mail_from = $this->config->smtp->from;
-
-            $this->mail_transport = (new Swift_SmtpTransport($this->config->smtp->host, 465, 'ssl'))
-                ->setUsername($this->config->smtp->user)
-                ->setPassword($this->config->smtp->pass)
-            ;
-            $this->mail_mailer = new Swift_Mailer($this->mail_transport);
+            $user = rawurlencode((string) $this->config->smtp->user);
+            $pass = rawurlencode((string) $this->config->smtp->pass);
+            $host = (string) $this->config->smtp->host;
+            $dsn = 'smtps://' . $user . ':' . $pass . '@' . $host . ':465';
+            $this->mail_mailer = new Mailer(Transport::fromDsn($dsn));
             $this->mail_loaded = true;
         }
 
@@ -34,20 +33,34 @@ class ControllerBase extends Controller
             $to = [$to];
         }
 
-        if($from === false) {
-            $from = $this->mail_from;
+        $sender = MailAddress::parse($this->config->smtp->from);
+        if ($sender === null) {
+            return false;
         }
 
-        $this->loadMailer();
+        try {
+            $this->loadMailer();
+            $message = (new Email())
+                ->from(new Address($sender['email'], $sender['name']))
+                ->subject($subject)
+                ->text($body)
+            ;
 
-        $message = (new Swift_Message($subject))
-            ->setFrom($this->config->smtp->from)
-            ->setReplyTo($from)
-            ->setTo($to)
-            ->setBody($body)
-        ;
+            foreach ($to as $recipient) {
+                $message->addTo($recipient);
+            }
 
-        return $this->mail_mailer->send($message);
+            $reply = MailAddress::parse($from === false ? $this->config->smtp->from : $from);
+            if ($reply !== null) {
+                $message->replyTo(new Address($reply['email'], $reply['name']));
+            }
+
+            $this->mail_mailer->send($message);
+        } catch (\Throwable $e) {
+            return false;
+        }
+
+        return true;
     }
 
 

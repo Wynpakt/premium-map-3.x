@@ -1,7 +1,5 @@
 <?php
 
-use Phalcon\Config;
-
 class ProductTask extends BaseTask {
     function mainAction() {
         $this->listAction();

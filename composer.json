@@ -2,8 +2,14 @@
   "name": "raphi/premium-map",
   "description": "Backend service for the Premium Landkarte",
   "require": {
-    "mjaschen/collmex": "^0.6.2",
-    "swiftmailer/swiftmailer": "^v6.2.7"
+    "php": ">=8.4",
+    "mjaschen/collmex": "^3.13",
+    "symfony/mailer": "^8.1",
+    "symfony/event-dispatcher": "^8.1",
+    "symfony/finder": "^8.1",
+    "symfony/http-foundation": "^8.1",
+    "symfony/mime": "^8.1",
+    "symfony/string": "^8.1"
   },
   "authors": [
     {
@@ -14,5 +20,10 @@
       "name": "Timo Schrappe",
       "email": "hello@timo.ruhr"
     }
-  ]
+  ],
+  "config": {
+    "platform": {
+      "php": "8.5.11"
+    }
+  }
 }
