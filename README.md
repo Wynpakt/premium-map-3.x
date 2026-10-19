@@ -78,23 +78,19 @@ Leave `app/config/config.php` on the server. Install `vendor` there too, so the 
 
 ### Fresh Ubuntu 26.04
 
-The host wants about 16 GB RAM and 50 GB free disk. The Germany Photon index is a 9 GB download.
+Photon indexes need about 15 GB under `/var` (the installer asks for 20 GB free). Prefer 8 GB+ RAM for the Germany index.
 
-From this checkout, with `premium` as the SSH host of the new server:
-
-```sh
-rsync -e ssh -rv --exclude='app/config/config.php' --exclude='.git' --exclude='vendor' \
-  ./ premium:/var/www/api.landkarte.premium-cola.de/
-ssh premium 'sudo I_UNDERSTAND=1 bash /var/www/api.landkarte.premium-cola.de/docs/deploy/install-ubuntu-26.04.sh'
-```
-
-The script installs Apache, PHP 8.5, Phalcon 5.23 from PECL, MySQL 8.4, Composer, three Photon 0.5 services and `/etc/cron.d/landkarte`. It writes `app/config/config.php` from `config.default.php` and stores the database password in `/etc/landkarte/db.env`. Collmex and SMTP stay empty until you fill them in. Ubuntu 26.04 ships PHP 8.5 and MySQL 8.4; Phalcon is not packaged, so it is built with PECL. Photon 0.5 stays on Java 11.
-
-The map frontend is the other repository. After `npm run build-stage`:
+On the server:
 
 ```sh
-scp -r dist/* dist/.[!.]* premium:/var/www/landkarte.premium-cola.de/
+sudo git clone https://github.com/Wynpakt/premium-map-3.x.git /var/www/api.landkarte.premium-cola.de
+cd /var/www/api.landkarte.premium-cola.de
+sudo I_UNDERSTAND=1 bash docs/deploy/install-ubuntu-26.04.sh
 ```
+
+The script installs Apache, PHP 8.5, Phalcon 5.23 from PECL, MySQL 8.4, Composer, three Photon 0.5 services, `/etc/cron.d/landkarte`, and builds the Angular map from `https://github.com/Wynpakt/premium-map-frontend` into `/var/www/landkarte.premium-cola.de`. Frontend source stays in `/var/src/premium-map-frontend`. It writes `app/config/config.php` from `config.default.php` and stores the database password in `/etc/landkarte/db.env`. Collmex and SMTP stay empty until you fill them in. Ubuntu 26.04 ships PHP 8.5 and MySQL 8.4; Phalcon is not packaged, so it is built with PECL. Photon 0.5 stays on Java 11. The Angular build needs Node 24 (installed via NodeSource).
+
+`SKIP_FRONTEND=1` leaves the map document root alone. `SKIP_PHOTON=1` skips geocoding data. Rebuild only the map later with `I_UNDERSTAND=1 SKIP_PHOTON=1 bash docs/deploy/install-ubuntu-26.04.sh`.
 
 TLS, once DNS for both hostnames points at the server:
 
