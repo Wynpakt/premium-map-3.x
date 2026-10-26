@@ -10,6 +10,8 @@ Requires Docker Compose. The app targets **PHP 8.5 + Phalcon 5.23** and Symfony 
 docker compose up --build
 ```
 
+The web image uses the moving tag `php:8.5-apache-bookworm`. Compose pulls that base image on build. The entrypoint stops if the image is still older than PHP 8.5.12.
+
 Then open http://localhost:8085
 
 On first start the entrypoint creates `app/config/config.php` from `app/config/config.docker.php`, runs `composer install`, and MySQL loads `docs/database/schema.sql`.

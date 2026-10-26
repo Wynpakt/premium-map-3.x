@@ -1,6 +1,16 @@
 #!/bin/sh
 set -e
 
+# Upstream floor for CVE-2026-109618 and CVE-2026-109619.
+# Ubuntu packages are checked by version in the host installer, not here.
+if ! php -r 'exit(version_compare(PHP_VERSION, "8.5.12", ">=") ? 0 : 1);'; then
+  echo "PHP $(php -r 'echo PHP_VERSION;') is older than 8.5.12 (CVE-2026-109618, CVE-2026-109619)." >&2
+  exit 1
+fi
+
+mkdir -p /usr/local/etc/php/conf.d
+printf 'pcre.jit=0\n' > /usr/local/etc/php/conf.d/pcre-jit.ini
+
 cd /var/www/html
 
 a2enmod rewrite >/dev/null

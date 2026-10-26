@@ -1,5 +1,7 @@
 # Local dev image: latest stable PHP 8.5 + Phalcon 5.23.
 # PHP 8.6 and Phalcon 6 are still release candidates.
+# Moving tag. Compose pulls it so a cached 8.5.11 layer is not reused.
+# The entrypoint refuses anything older than 8.5.12.
 FROM php:8.5-apache-bookworm
 
 # deb.debian.org stalls from this network; use a mirror that completes.

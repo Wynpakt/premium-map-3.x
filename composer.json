@@ -20,10 +20,5 @@
       "name": "Timo Schrappe",
       "email": "hello@timo.ruhr"
     }
-  ],
-  "config": {
-    "platform": {
-      "php": "8.5.11"
-    }
-  }
+  ]
 }

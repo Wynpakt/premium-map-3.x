@@ -106,6 +106,20 @@ apt-get install -y \
   rsync \
   unzip
 
+# php -v stays 8.5.4. The fix for CVE-2026-109618 and CVE-2026-109619
+# is this package revision (USN-8948-1), not a newer upstream string.
+UBUNTU_PHP_PACKAGE_FLOOR=8.5.4-0ubuntu1.5
+php_pkg="$(dpkg-query -W -f '${Version}' libapache2-mod-php8.5)"
+if ! dpkg --compare-versions "$php_pkg" ge "$UBUNTU_PHP_PACKAGE_FLOOR"; then
+  systemctl stop apache2 || true
+  echo "libapache2-mod-php8.5 ${php_pkg} is older than ${UBUNTU_PHP_PACKAGE_FLOOR} (CVE-2026-109618, CVE-2026-109619)." >&2
+  exit 1
+fi
+
+# Phalcon on this host returns empty replies when PCRE JIT cannot allocate.
+printf 'pcre.jit=0\n' > /etc/php/8.5/mods-available/pcre-jit.ini
+phpenmod -v 8.5 -s ALL pcre-jit
+
 if ! php -m | grep -qi '^phalcon$'; then
   echo "Building Phalcon 5.23"
   pecl install phalcon-5.23.0
@@ -240,7 +254,7 @@ sed \
 a2dissite 000-default >/dev/null || true
 a2ensite landkarte-api.conf landkarte-map.conf >/dev/null
 apachectl configtest
-systemctl reload apache2
+systemctl restart apache2
 
 install -d -o www-data -g www-data /var/log/landkarte
 sed "s|/var/www/api.landkarte.premium-cola.de|${APP_DIR}|g" \
