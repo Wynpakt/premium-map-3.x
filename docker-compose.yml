@@ -36,7 +36,8 @@ services:
   photon-de:
     profiles: ["photon"]
     build:
-      context: ./docker/photon
+      context: .
+      dockerfile: docker/photon/Dockerfile
     environment:
       PHOTON_COUNTRY: de
     ports:
@@ -47,7 +48,8 @@ services:
   photon-at:
     profiles: ["photon"]
     build:
-      context: ./docker/photon
+      context: .
+      dockerfile: docker/photon/Dockerfile
     environment:
       PHOTON_COUNTRY: at
     ports:
@@ -58,7 +60,8 @@ services:
   photon-ch:
     profiles: ["photon"]
     build:
-      context: ./docker/photon
+      context: .
+      dockerfile: docker/photon/Dockerfile
     environment:
       PHOTON_COUNTRY: ch
     ports:

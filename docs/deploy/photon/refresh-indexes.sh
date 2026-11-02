@@ -16,6 +16,8 @@ MIRROR=https://download1.graphhopper.com/public/extracts/by-country-code
 UA=premium-landkarte-photon
 # Archive plus extracted index, with a little room over the measured ~2x expansion.
 SPACE_FACTOR=3
+# A cold Germany index took about 8 minutes before it answered. 180 * 5s covers that.
+READY_TRIES=180
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "refresh-indexes.sh must run as root" >&2
@@ -75,7 +77,7 @@ wait_until_up() {
   port="$(listen_port "$cc")"
   query="$(probe_query "$cc")"
   local _
-  for _ in $(seq 1 60); do
+  for _ in $(seq 1 "$READY_TRIES"); do
     if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${port}/api?limit=1&lang=de&q=${query}"; then
       return 0
     fi
