@@ -129,6 +129,19 @@ test('smtp from config becomes one address', function () {
     assertSame('Premium Landkarte', $parsed['name']);
     assertSame('ada@example.test', MailAddress::parse('ada@example.test')['email']);
     assertSame(null, MailAddress::parse(''));
+
+    $config = new class {
+        public function toArray()
+        {
+            return array('landkarte@premium-cola.de' => 'Premium Landkarte');
+        }
+    };
+    $fromConfig = MailAddress::parse($config);
+    if (!is_array($fromConfig)) {
+        throw new Exception('expected address from config object, got ' . var_export($fromConfig, true));
+    }
+    assertSame('landkarte@premium-cola.de', $fromConfig['email']);
+    assertSame('Premium Landkarte', $fromConfig['name']);
 });
 
 test('search keyword is a bound like pattern', function () {

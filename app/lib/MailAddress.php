@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Turns the smtp.from config (string or [email => name]) into a single address.
+ * Turns smtp.from (string, [email => name], or an object with toArray) into one address.
  */
 class MailAddress
 {
@@ -13,6 +13,10 @@ class MailAddress
                 return array('email' => $from, 'name' => '');
             }
             return null;
+        }
+
+        if (is_object($from) && method_exists($from, 'toArray')) {
+            $from = $from->toArray();
         }
 
         if (!is_array($from)) {
