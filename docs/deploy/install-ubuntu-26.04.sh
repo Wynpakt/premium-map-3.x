@@ -271,6 +271,8 @@ if [ "$SKIP_PHOTON" != "1" ]; then
       https://github.com/komoot/photon/releases/download/0.5.0/photon-0.5.0.jar
   fi
   install -m 755 "${SCRIPT_DIR}/photon/run.sh" /opt/photon/run.sh
+  install -m 755 "${SCRIPT_DIR}/photon/fetch-index.sh" /opt/photon/fetch-index.sh
+  install -m 755 "${SCRIPT_DIR}/photon/refresh-indexes.sh" /opt/photon/refresh-indexes.sh
   install -m 644 "${SCRIPT_DIR}/photon/photon@.service" /etc/systemd/system/photon@.service
   if [ "$mem_mb" -lt 6000 ]; then
     cat > /etc/photon/de.env <<'EOF'
