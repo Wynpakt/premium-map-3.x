@@ -2,11 +2,11 @@
 
 /**
  * Picks the regional feedback inbox from feedback.txt lines "CC;prefix;email".
- * The first matching country and zip prefix wins. Otherwise the default inbox.
+ * The first matching country and zip prefix wins. Otherwise the contact inbox.
  */
 class FeedbackRouter
 {
-    const DEFAULT_EMAIL = 'anna-lilja@premium-kollektiv.de';
+    const DEFAULT_EMAIL = 'kontakt@premium-kollektiv.de';
 
     public static function parseLines($contents)
     {
