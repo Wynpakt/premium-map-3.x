@@ -123,7 +123,7 @@ test('feedback router matches country and zip prefix', function () {
     assertSame(FeedbackRouter::DEFAULT_EMAIL, FeedbackRouter::route($contacts, 'CH', '8000'));
 });
 
-test('feedback file sends every DE AT and CH postcode to the contact inbox', function () {
+test('feedback file sends every country to the contact inbox', function () {
     $contacts = FeedbackRouter::parseLines(file_get_contents(dirname(__DIR__) . '/app/config/feedback.txt'));
     $inbox = 'kontakt@premium-kollektiv.de';
     assertSame($inbox, FeedbackRouter::route($contacts, 'DE', '10115'));
@@ -132,6 +132,8 @@ test('feedback file sends every DE AT and CH postcode to the contact inbox', fun
     assertSame($inbox, FeedbackRouter::route($contacts, 'DE', ''));
     assertSame($inbox, FeedbackRouter::route($contacts, 'AT', '1010'));
     assertSame($inbox, FeedbackRouter::route($contacts, 'CH', '8000'));
+    assertSame($inbox, FeedbackRouter::route($contacts, 'NL', '1012'));
+    assertSame($inbox, FeedbackRouter::route($contacts, '', '10115'));
 });
 
 test('rejected recipient falls back to the contact inbox', function () {
