@@ -43,9 +43,10 @@ class FeedbackController extends ControllerBase
                 $contacts = FeedbackRouter::parseLines(file_get_contents('../app/config/feedback.txt'));
                 $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
-                if($this->mail($contact_email, $subject, $feedback, $from)) {
+                $sentTo = $this->mail($contact_email, $subject, $feedback, $from);
+                if ($sentTo) {
                     return $this->jsonResponse([
-                        'msg' => 'Nachricht wurde an ' . $contact_email . ' versendet.',
+                        'msg' => 'Nachricht wurde an ' . $sentTo . ' versendet.',
                     ]);
                 } else {
                     return $this->jsonResponseError('Nachricht konnte nicht gesendet werden, weil die eMail nicht rausging.');
@@ -93,9 +94,10 @@ class FeedbackController extends ControllerBase
             . $zip . ' ' . $city . "\n"
             . $country . "\n";
 
-        if ($this->mail($contact_email, 'Premium Landkarte: neue Verkaufsstelle ' . $name, $body, $email)) {
+        $sentTo = $this->mail($contact_email, 'Premium Landkarte: neue Verkaufsstelle ' . $name, $body, $email);
+        if ($sentTo) {
             return $this->jsonResponse(array(
-                'msg' => 'Nachricht wurde an ' . $contact_email . ' versendet.',
+                'msg' => 'Nachricht wurde an ' . $sentTo . ' versendet.',
             ));
         }
 

@@ -123,6 +123,17 @@ test('feedback router matches country and zip prefix', function () {
     assertSame(FeedbackRouter::DEFAULT_EMAIL, FeedbackRouter::route($contacts, 'CH', '8000'));
 });
 
+test('rejected recipient falls back to the contact inbox', function () {
+    $rejected = 'Expected response code "250/251/252" but got code "550", with message "550 5.1.1 <jane@premium-kollektiv.de>: Recipient address rejected: User unknown".';
+    assertSame(true, MailFallback::isRecipientRejected(new Exception($rejected)));
+    assertSame(false, MailFallback::isRecipientRejected(new Exception('Connection could not be established.')));
+    assertSame(false, MailFallback::isRecipientRejected(new Exception('Expected response code "250" but got code "550", with message "550 Message content rejected".')));
+    assertSame(MailFallback::ADDRESS, MailFallback::replacement('jane@premium-kollektiv.de'));
+    assertSame(null, MailFallback::replacement(MailFallback::ADDRESS));
+    assertSame(null, MailFallback::replacement('Kontakt@premium-kollektiv.de'));
+    assertContains('jane@premium-kollektiv.de', MailFallback::notice('jane@premium-kollektiv.de'));
+});
+
 test('smtp from config becomes one address', function () {
     $parsed = MailAddress::parse(array('landkarte@premium-cola.de' => 'Premium Landkarte'));
     assertSame('landkarte@premium-cola.de', $parsed['email']);
