@@ -54,6 +54,19 @@ test('photon endpoint is country specific', function () {
     assertContains('Germany', rawurldecode($endpoint));
 });
 
+test('photon refresh lock is a file on disk', function () {
+    $missing = sys_get_temp_dir() . '/photon-refresh-missing-' . getmypid();
+    $present = sys_get_temp_dir() . '/photon-refresh-present-' . getmypid();
+    @unlink($missing);
+    file_put_contents($present, "1\n");
+    try {
+        assertSame(false, PhotonIndexRefresh::isRefreshing($missing));
+        assertSame(true, PhotonIndexRefresh::isRefreshing($present));
+    } finally {
+        @unlink($present);
+    }
+});
+
 test('photon parse reads lon lat order from geojson', function () {
     $parsed = PhotonGeocoder::parse(array(
         'features' => array(

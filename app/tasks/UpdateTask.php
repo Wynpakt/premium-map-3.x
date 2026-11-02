@@ -366,7 +366,11 @@ class UpdateTask extends BaseTask
      * CLI action updating geo coordinates only
      */
     public function geoAction() {
-        
+        if (PhotonIndexRefresh::isRefreshing()) {
+            echo 'Photon-Index wird ausgetauscht. Dieser Lauf macht kein Geocoding.' . PHP_EOL;
+            return;
+        }
+
         if($items = Item::find('geolocate_count < 20')) {
             
             $new_updated_items = 0;

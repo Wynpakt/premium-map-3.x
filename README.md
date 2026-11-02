@@ -178,6 +178,8 @@ Config key `photon` maps country codes to base URLs. Inside Compose that is `htt
 
 The map does not read Collmex on each request. `docs/cron/landkarte.cron` runs `update` and then `update geo` every hour. Copy it to `/etc/cron.d/landkarte` on the API host. The repository did not previously contain a cron unit, so a Collmex edit stays invisible until those commands run.
 
+The OpenStreetMap data inside Photon is a dated GraphHopper dump, not the live planet. On the 1st of each month at 04:10, `/opt/photon/refresh-indexes.sh` checks DE, AT and CH. A country is replaced only when the mirror lists a newer `photon-db-<cc>-YYYYMMDD.tar.bz2` than the one recorded in `/var/lib/photon/<cc>.release`. The download builds the new index beside the old one when the free space covers about three times the archive size. Germany on a 50 GB volume does not, so that index is deleted before the download. While `/var/lib/photon/refresh.lock` exists, `update geo` does nothing and does not increment `geolocate_count`.
+
 #### Checking whether an address can be located
 
 With Photon running, the same query the sync sends is:
