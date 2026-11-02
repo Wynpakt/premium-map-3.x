@@ -27,6 +27,10 @@ class ControllerBase extends Controller
 
     }
 
+    /**
+     * Sends the message. Returns the address that accepted it, or false.
+     * A rejected recipient is tried once more at the collective contact address.
+     */
     public function mail($to, $subject, $body, $from = false) {
 
         if(!is_array($to)){
@@ -34,9 +38,39 @@ class ControllerBase extends Controller
         }
 
         $sender = MailAddress::parse($this->config->smtp->from);
-        if ($sender === null) {
+        if ($sender === null || $to === array() || trim((string) $to[0]) === '') {
             return false;
         }
+
+        $error = $this->deliver($to, $subject, $body, $from, $sender);
+        if ($error === null) {
+            return $to[0];
+        }
+
+        $replacement = MailFallback::isRecipientRejected($error)
+            ? MailFallback::replacement($to[0])
+            : null;
+        if ($replacement === null) {
+            return false;
+        }
+
+        $this->mail_loaded = false;
+        $this->mail_mailer = null;
+        $error = $this->deliver(
+            array($replacement),
+            $subject,
+            $body . MailFallback::notice($to[0]),
+            $from,
+            $sender
+        );
+        if ($error === null) {
+            return $replacement;
+        }
+
+        return false;
+    }
+
+    private function deliver(array $recipients, $subject, $body, $from, array $sender) {
 
         try {
             $this->loadMailer();
@@ -46,7 +80,7 @@ class ControllerBase extends Controller
                 ->text($body)
             ;
 
-            foreach ($to as $recipient) {
+            foreach ($recipients as $recipient) {
                 $message->addTo($recipient);
             }
 
@@ -57,10 +91,10 @@ class ControllerBase extends Controller
 
             $this->mail_mailer->send($message);
         } catch (\Throwable $e) {
-            return false;
+            return $e;
         }
 
-        return true;
+        return null;
     }
 
 
