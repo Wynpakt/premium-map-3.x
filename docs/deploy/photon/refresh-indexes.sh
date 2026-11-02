@@ -133,7 +133,7 @@ for cc in at ch de; do
   fi
   dest="${PHOTON_ROOT}/${cc}"
   stamp="${PHOTON_ROOT}/${cc}.release"
-  if [ -d "${dest}/elasticsearch" ] && [ -f "$stamp" ] && [ "$(tr -d '[:space:]' < "$stamp")" = "$file" ]; then
+  if [ -d "${dest}/photon_data/elasticsearch" ] && [ -f "$stamp" ] && [ "$(tr -d '[:space:]' < "$stamp")" = "$file" ]; then
     echo "${cc}: ${file} already installed"
     continue
   fi
