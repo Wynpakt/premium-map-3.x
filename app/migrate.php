@@ -27,3 +27,8 @@ if ((int) $exists->fetchColumn() === 0) {
 } else {
     echo "item.geocode_pending already present\n";
 }
+
+$cleared = $pdo->exec(
+    "UPDATE item SET phone = '' WHERE phone IS NOT NULL AND phone <> ''"
+);
+echo 'cleared stored phone numbers: ' . (int) $cleared . "\n";
