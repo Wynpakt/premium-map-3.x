@@ -11,7 +11,9 @@ DEST="${2:?destination directory}"
 BASE="https://download1.graphhopper.com/public/extracts/by-country-code/${COUNTRY}"
 UA="premium-landkarte-photon"
 
-if [ -d "${DEST}/elasticsearch" ]; then
+# Photon 0.5 reads ${DEST}/photon_data/elasticsearch. The archive's top directory
+# is photon_data; renaming that directory to ${DEST} drops the wrapper it looks for.
+if [ -d "${DEST}/photon_data/elasticsearch" ]; then
   echo "Photon index for ${COUNTRY} already present in ${DEST}"
   exit 0
 fi
@@ -47,19 +49,20 @@ rm -f "$archive" "${archive}.md5"
 
 mkdir -p "$(dirname "$DEST")"
 rm -rf "$DEST"
+mkdir -p "$DEST"
 if [ -d "$tmp/photon_data" ]; then
-  mv "$tmp/photon_data" "$DEST"
+  mv "$tmp/photon_data" "$DEST/photon_data"
 elif [ -d "$tmp/elasticsearch" ]; then
-  mkdir -p "$DEST"
-  mv "$tmp"/* "$DEST"/
+  mkdir -p "$DEST/photon_data"
+  mv "$tmp/elasticsearch" "$DEST/photon_data/elasticsearch"
 else
   echo "Unexpected Photon archive layout:" >&2
   find "$tmp" -maxdepth 3 -type d >&2
   exit 1
 fi
 
-if [ ! -d "${DEST}/elasticsearch" ]; then
-  echo "Extracted index has no elasticsearch/ directory in ${DEST}" >&2
+if [ ! -d "${DEST}/photon_data/elasticsearch" ]; then
+  echo "Extracted index has no photon_data/elasticsearch/ directory in ${DEST}" >&2
   exit 1
 fi
 
