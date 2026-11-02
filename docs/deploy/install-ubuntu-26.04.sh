@@ -15,7 +15,7 @@
 #   MAP_HOST=landkarte.premium-cola.de
 #   DB_NAME=landkarte
 #   DB_USER=landkarte
-#   SKIP_PHOTON=1          skip the index download (~15 GB under /var/lib/photon)
+#   SKIP_PHOTON=1          skip the index download (about 22 GB installed, 30 GB free)
 #   SKIP_FRONTEND=1        skip cloning and building the Angular map
 #   FRONTEND_REPO=https://github.com/Wynpakt/premium-map-frontend.git
 #   FRONTEND_REF=master
@@ -33,7 +33,7 @@ fi
 if [ "${I_UNDERSTAND:-}" != "1" ]; then
   echo "Refusing to install system packages without I_UNDERSTAND=1." >&2
   echo "This installs Apache, MySQL, PHP 8.5, Phalcon 5.23, the Angular map and Photon." >&2
-  echo "Photon indexes need about 15 GB under /var. Prefer 8 GB+ RAM for the DE index." >&2
+  echo "Photon indexes need about 30 GB free under /var. Prefer 8 GB+ RAM for the DE index." >&2
   exit 1
 fi
 
@@ -67,9 +67,12 @@ export DEBIAN_FRONTEND=noninteractive
 mem_mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)"
 disk_gb="$(df -BG --output=avail /var | tail -1 | tr -dc '0-9')"
 echo "RAM ${mem_mb} MB, free on /var: ${disk_gb} GB"
-# Indexes land at ~15 GB. Peak during download+extract is a bit higher; 20 GB free is enough.
-if [ "$disk_gb" -lt 20 ] && [ "$SKIP_PHOTON" != "1" ]; then
-  echo "Need 20 GB free on /var for the Photon indexes (~15 GB installed; have ${disk_gb} GB)." >&2
+# Germany's 9.2 GB archive and its ~18 GB index sit on disk together during extract.
+PHOTON_MIN_FREE_GB=30
+# Cold Germany load took about 8 minutes. 180 * 5s also covers Austria and Switzerland.
+PHOTON_READY_TRIES=180
+if [ "$disk_gb" -lt "$PHOTON_MIN_FREE_GB" ] && [ "$SKIP_PHOTON" != "1" ]; then
+  echo "Need ${PHOTON_MIN_FREE_GB} GB free on /var for the Photon indexes (have ${disk_gb} GB)." >&2
   echo "Set SKIP_PHOTON=1 to install the API without geocoding data." >&2
   exit 1
 fi
@@ -186,13 +189,17 @@ fi
 if [ ! -f "${APP_DIR}/app/config/config.php" ]; then
   DB_PASS="$(openssl rand -base64 24 | tr -d '/+=' | head -c 24)"
   install -d -m 700 /etc/landkarte
-  umask 077
-  cat > /etc/landkarte/db.env <<EOF
+  # Keep the tight umask on the password file only. A leaked umask 077 makes the
+  # Photon jar mode 600, and the photon user cannot read it.
+  (
+    umask 077
+    cat > /etc/landkarte/db.env <<EOF
 DB_NAME=${DB_NAME}
 DB_USER=${DB_USER}
 DB_PASS=${DB_PASS}
 EOF
-  chmod 600 /etc/landkarte/db.env
+    chmod 600 /etc/landkarte/db.env
+  )
   mysql --batch <<SQL
 CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8 COLLATE utf8_general_ci;
 CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASS}';
@@ -270,7 +277,9 @@ if [ "$SKIP_PHOTON" != "1" ]; then
       -o /opt/photon/photon-0.5.0.jar \
       https://github.com/komoot/photon/releases/download/0.5.0/photon-0.5.0.jar
   fi
+  chmod 644 /opt/photon/photon-0.5.0.jar
   install -m 755 "${SCRIPT_DIR}/photon/run.sh" /opt/photon/run.sh
+  install -m 755 "${SCRIPT_DIR}/photon/download-archive.sh" /opt/photon/download-archive.sh
   install -m 755 "${SCRIPT_DIR}/photon/fetch-index.sh" /opt/photon/fetch-index.sh
   install -m 755 "${SCRIPT_DIR}/photon/refresh-indexes.sh" /opt/photon/refresh-indexes.sh
   install -m 644 "${SCRIPT_DIR}/photon/photon@.service" /etc/systemd/system/photon@.service
@@ -309,19 +318,21 @@ EOF
   done
   systemctl daemon-reload
   systemctl enable --now photon@de photon@at photon@ch
-  echo "Waiting for Photon DE on 127.0.0.1:2322 (index load can take several minutes)"
+  echo "Waiting up to 15 minutes for Photon on 2322, 2323 and 2324"
   ready=0
-  for _ in $(seq 1 60); do
-    if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:2322/api?limit=1&lang=de&q=Berlin"; then
+  for _ in $(seq 1 "$PHOTON_READY_TRIES"); do
+    if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:2322/api?limit=1&lang=de&q=Berlin" \
+      && curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:2323/api?limit=1&lang=de&q=Wien" \
+      && curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:2324/api?limit=1&lang=de&q=Bern"; then
       ready=1
       break
     fi
     sleep 5
   done
   if [ "$ready" != "1" ]; then
-    echo "Photon DE is not answering yet. Check: journalctl -u photon@de -e" >&2
+    echo "Photon is not answering yet. Check: journalctl -u photon@de -u photon@at -u photon@ch -e" >&2
   else
-    echo "Photon DE is answering."
+    echo "Photon DE, AT and CH are answering."
   fi
 fi
 

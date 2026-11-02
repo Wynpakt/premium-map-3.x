@@ -10,6 +10,8 @@ COUNTRY="${1:?country code de, at or ch}"
 DEST="${2:?destination directory}"
 BASE="https://download1.graphhopper.com/public/extracts/by-country-code/${COUNTRY}"
 UA="premium-landkarte-photon"
+# shellcheck source=download-archive.sh
+. "$(dirname "$0")/download-archive.sh"
 
 # Photon 0.5 reads ${DEST}/photon_data/elasticsearch. The archive's top directory
 # is photon_data; renaming that directory to ${DEST} drops the wrapper it looks for.
@@ -35,7 +37,7 @@ mkdir -p "$tmp"
 trap 'rm -rf "$work"' EXIT
 
 echo "Downloading ${BASE}/${file}"
-curl -fL --retry 5 --retry-delay 5 -A "$UA" -o "$archive" "${BASE}/${file}"
+download_archive "${BASE}/${file}" "$archive"
 curl -fsSL -A "$UA" -o "${archive}.md5" "${BASE}/${file}.md5"
 (
   cd "$work"

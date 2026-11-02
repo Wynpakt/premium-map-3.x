@@ -80,7 +80,7 @@ Leave `app/config/config.php` on the server. Install `vendor` there too, so the 
 
 ### Fresh Ubuntu 26.04
 
-Photon indexes need about 15 GB under `/var` (the installer asks for 20 GB free). Prefer 8 GB+ RAM for the Germany index.
+Photon indexes need about 22 GB under `/var` once installed. The installer asks for 30 GB free, because the Germany archive and the unpacked index are on disk at the same time. Prefer 8 GB+ RAM for the Germany index.
 
 On the server:
 
