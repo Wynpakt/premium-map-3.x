@@ -88,7 +88,7 @@ test('photon parse reads lon lat order from geojson', function () {
     assertSame(null, PhotonGeocoder::parse(array('features' => array())));
 });
 
-test('collmex row keeps phone at index 15 and the fields the sync already used', function () {
+test('collmex row drops the phone at index 15 and keeps the fields the sync stores', function () {
     $row = array_fill(0, 32, '');
     $row[0] = 'CMXADR';
     $row[1] = '99';
@@ -105,7 +105,7 @@ test('collmex row keeps phone at index 15 and the fields the sync already used',
     $row[31] = '124,8,20';
 
     $mapped = CollmexAddress::fromRow($row);
-    assertSame('030123', $mapped['phone']);
+    assertSame(false, array_key_exists('phone', $mapped));
     assertSame('Torstraße 1', $mapped['street']);
     assertSame('10119', $mapped['zip']);
     assertSame('Berlin', $mapped['city']);

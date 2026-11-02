@@ -94,7 +94,6 @@ class ItemController extends ControllerBase
                 'zip' => $itemRow->zip . '',
                 'web' => $itemRow->web . '',
                 'email' => $itemRow->email . '',
-                'phone' => $itemRow->phone . '',
                 'uri' => $itemRow->id,
                 'lat' => $itemRow->lat,
                 'lng' => $itemRow->lng,
@@ -236,7 +235,6 @@ class ItemController extends ControllerBase
                     'zip' => $item->zip.'',
                     'web' => $item->web.'',
                     'email' => $item->email.'',
-                    'phone' => $item->phone.'',
                     'uri' => $item->id
                 ]);
             }

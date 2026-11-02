@@ -5,7 +5,8 @@
  *
  * Indexes follow the Collmex address record (0-based), the same positions the
  * sync already used for street (9), zip (10), city (11), country (14),
- * email (17), url (28) and address group (31). Phone is field 16, index 15.
+ * email (17), url (28) and address group (31). Field 16 (index 15) is the
+ * phone number. Collmex mixes private numbers into that field, so it is not mapped.
  */
 class CollmexAddress
 {
@@ -24,7 +25,6 @@ class CollmexAddress
             'zip' => self::at($row, 10),
             'city' => self::at($row, 11),
             'country' => self::at($row, 14),
-            'phone' => self::at($row, 15),
             'email' => self::at($row, 17),
             'web' => self::at($row, 28),
             'address_group' => self::at($row, 31),

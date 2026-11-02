@@ -217,7 +217,8 @@ class UpdateTask extends BaseTask
                         $item->setEmail($email);
                     }
 
-                    $item->setPhone(isset($data['phone']) ? trim($data['phone']) : '');
+                    // Collmex mixes private numbers into this field. Keep the column, store nothing.
+                    $item->setPhone('');
 
                     /*
                      * save values in model object
@@ -666,8 +667,6 @@ class UpdateTask extends BaseTask
         if($data['web'] != '') {
             $data['web'] = $this->addhttp($data['web']);
         }
-
-        $data['phone'] = isset($data['phone']) ? trim($data['phone']) : '';
 
         return $data;
         
