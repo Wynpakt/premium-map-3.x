@@ -20,10 +20,148 @@
 #   FRONTEND_REPO=https://github.com/Wynpakt/premium-map-frontend.git
 #   FRONTEND_REF=master
 #   ENABLE_TLS=1 TLS_EMAIL=ops@example.com
+#   MAP_MODE=public|internal   default public; a later run keeps /etc/landkarte/mode
+#   MAP_USER=... MAP_PASSWORD=...   required the first time MAP_MODE=internal
 #
 # Collmex and SMTP stay empty. Fill them in app/config/config.php afterwards.
 # The database password is written to /etc/landkarte/db.env (mode 600).
+# An internal map asks for MAP_USER before Apache serves the API or the map.
+# The password lives in /etc/landkarte/htpasswd (mode 640), not in the repo.
 set -euo pipefail
+
+render_auth() {
+  case "$1" in
+    public)
+      printf '%s\n' '        Require all granted'
+      ;;
+    internal)
+      printf '%s\n' \
+        '        AuthType Basic' \
+        '        AuthName "Landkarte"' \
+        '        AuthUserFile /etc/landkarte/htpasswd' \
+        '        Require valid-user'
+      ;;
+    *)
+      echo "MAP_MODE must be public or internal (got ${1})." >&2
+      return 1
+      ;;
+  esac
+}
+
+apply_auth() {
+  local src="$1" dst="$2" snippet
+  snippet="$(mktemp)"
+  render_auth "$MAP_MODE" > "$snippet"
+  awk '
+    NR==FNR { block = block $0 ORS; next }
+    index($0, "__AUTH__") { printf "%s", block; next }
+    { print }
+  ' "$snippet" "$src" > "$dst"
+  rm -f "$snippet"
+}
+
+# The internal map calls its own host. Apache forwards the API paths and
+# keeps the single basic-auth login. The public map calls its API host
+# directly, so this block stays empty there.
+render_api_proxy() {
+  local mode="$1" host="$2"
+  if [ "$mode" != "internal" ]; then
+    return 0
+  fi
+  cat << EOF
+    SSLProxyEngine On
+    <Location /item/>
+        AuthType Basic
+        AuthName "Landkarte"
+        AuthUserFile /etc/landkarte/htpasswd
+        Require valid-user
+        ProxyPass https://${host}/item/
+        ProxyPassReverse https://${host}/item/
+    </Location>
+    <Location /search>
+        AuthType Basic
+        AuthName "Landkarte"
+        AuthUserFile /etc/landkarte/htpasswd
+        Require valid-user
+        ProxyPass https://${host}/search
+        ProxyPassReverse https://${host}/search
+    </Location>
+    RewriteEngine On
+    RewriteCond %{REQUEST_METHOD} =POST
+    RewriteRule ^/feedback(/report)?\$ https://${host}/feedback\$1 [P,L,NE]
+EOF
+}
+
+apply_api_proxy() {
+  local src="$1" dst="$2" snippet
+  snippet="$(mktemp)"
+  render_api_proxy "$MAP_MODE" "$API_HOST" > "$snippet"
+  if [ ! -s "$snippet" ]; then
+    grep -v '^__API_PROXY__$' "$src" > "$dst"
+  else
+    awk '
+      NR==FNR { block = block $0 ORS; next }
+      $0 == "__API_PROXY__" { printf "%s", block; next }
+      { print }
+    ' "$snippet" "$src" > "$dst"
+  fi
+  rm -f "$snippet"
+}
+
+if [ "${1:-}" = "--self-check" ]; then
+  public_auth="$(render_auth public)"
+  case "$public_auth" in
+    *"Require all granted"*) ;;
+    *) echo "public map did not stay open" >&2; exit 1 ;;
+  esac
+  case "$public_auth" in
+    *AuthType*) echo "public map asked for a password" >&2; exit 1 ;;
+  esac
+  internal_auth="$(render_auth internal)"
+  case "$internal_auth" in
+    *"AuthType Basic"*"AuthUserFile /etc/landkarte/htpasswd"*"Require valid-user"*) ;;
+    *) echo "internal map has no password gate" >&2; exit 1 ;;
+  esac
+  if render_auth other >/dev/null 2>&1; then
+    echo "unknown MAP_MODE was accepted" >&2
+    exit 1
+  fi
+  here="$(cd "$(dirname "$0")" && pwd)"
+  work="$(mktemp -d)"
+  sed -e 's|__API_HOST__|api.internal.example|g' -e 's|__APP_DIR__|/var/www/api|g' \
+    "${here}/apache-api.conf" > "$work/api.in"
+  sed -e 's|__MAP_HOST__|map.internal.example|g' -e 's|__MAP_DIR__|/var/www/map|g' \
+    "${here}/apache-map.conf" > "$work/map.in"
+  MAP_MODE=internal
+  API_HOST=api.internal.example
+  apply_auth "$work/api.in" "$work/api.conf"
+  apply_auth "$work/map.in" "$work/map.auth"
+  apply_api_proxy "$work/map.auth" "$work/map.conf"
+  grep -q 'AuthType Basic' "$work/api.conf"
+  grep -q 'AuthType Basic' "$work/map.conf"
+  grep -q 'api.internal.example' "$work/api.conf"
+  grep -q 'map.internal.example' "$work/map.conf"
+  grep -q 'ProxyPass https://api.internal.example/item/' "$work/map.conf"
+  if grep -q '__AUTH__\|__API_PROXY__' "$work/api.conf" "$work/map.conf"; then
+    echo "auth placeholder left in a vhost" >&2
+    exit 1
+  fi
+  MAP_MODE=public
+  apply_auth "$work/api.in" "$work/api.conf"
+  apply_api_proxy "$work/map.auth" "$work/map.conf"
+  if grep -q 'AuthType' "$work/api.conf"; then
+    echo "public vhost asked for a password" >&2
+    exit 1
+  fi
+  if grep -q 'ProxyPass\|__API_PROXY__' "$work/map.conf"; then
+    echo "public map forwarded the API" >&2
+    exit 1
+  fi
+  grep -q 'Require all granted' "$work/api.conf"
+  rm -rf "$work"
+  echo "audience self-check ok"
+  exit 0
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
   echo "Run as root." >&2
@@ -61,6 +199,26 @@ fi
 SKIP_PHOTON="${SKIP_PHOTON:-0}"
 SKIP_FRONTEND="${SKIP_FRONTEND:-0}"
 ENABLE_TLS="${ENABLE_TLS:-0}"
+if [ -z "${MAP_MODE:-}" ] && [ -f /etc/landkarte/mode ]; then
+  MAP_MODE="$(tr -d '[:space:]' < /etc/landkarte/mode)"
+fi
+MAP_MODE="${MAP_MODE:-public}"
+render_auth "$MAP_MODE" >/dev/null
+if [ "$MAP_MODE" = "internal" ]; then
+  if [ -n "${MAP_PASSWORD:-}" ] || [ -n "${MAP_USER:-}" ]; then
+    if [ -z "${MAP_USER:-}" ] || [ -z "${MAP_PASSWORD:-}" ]; then
+      echo "Internal map needs both MAP_USER and MAP_PASSWORD." >&2
+      exit 1
+    fi
+    if ! [[ "$MAP_USER" =~ ^[A-Za-z0-9._@-]+$ ]]; then
+      echo "MAP_USER may only contain letters, digits, and . _ @ -." >&2
+      exit 1
+    fi
+  elif [ ! -s /etc/landkarte/htpasswd ]; then
+    echo "Internal map needs MAP_USER and MAP_PASSWORD on the first run." >&2
+    exit 1
+  fi
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -104,6 +262,7 @@ apt-get install -y \
   openjdk-11-jre-headless \
   git \
   curl \
+  apache2-utils \
   ca-certificates \
   bzip2 \
   rsync \
@@ -172,7 +331,11 @@ if [ "$SKIP_FRONTEND" != "1" ]; then
   (
     cd "$FRONTEND_SRC"
     npm ci
-    npx ng build --configuration=production
+    if [ "$MAP_MODE" = "internal" ]; then
+      npx ng build --configuration=internal
+    else
+      npx ng build --configuration=production
+    fi
   )
   if [ ! -f "${FRONTEND_SRC}/dist/index.html" ]; then
     echo "Frontend build produced no dist/index.html" >&2
@@ -235,6 +398,21 @@ else
   mysql --batch -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8 COLLATE utf8_general_ci;"
 fi
 
+MAP_MODE_VALUE="$MAP_MODE" \
+CONFIG_DST="${APP_DIR}/app/config/config.php" \
+php <<'PHP'
+<?php
+require_once dirname(getenv('CONFIG_DST')) . '/../lib/MapAudience.php';
+$text = file_get_contents(getenv('CONFIG_DST'));
+$next = MapAudience::patchConfigText($text, getenv('MAP_MODE_VALUE'));
+if ($next === false) {
+    fwrite(STDERR, "config.php has no collmex key, audience was not written\n");
+    exit(1);
+}
+file_put_contents(getenv('CONFIG_DST'), $next);
+PHP
+echo "Audience in config.php: ${MAP_MODE}"
+
 chown -R www-data:www-data "$APP_DIR" "$MAP_DIR"
 chmod 640 "${APP_DIR}/app/config/config.php"
 
@@ -249,15 +427,32 @@ if [ "$item_table" = "0" ]; then
 fi
 runuser -u www-data -- php "${APP_DIR}/app/migrate.php"
 
-a2enmod rewrite >/dev/null
+install -d -o root -g www-data -m 750 /etc/landkarte
+printf '%s\n' "$MAP_MODE" > /etc/landkarte/mode
+chmod 644 /etc/landkarte/mode
+if [ "$MAP_MODE" = "internal" ] && [ -n "${MAP_PASSWORD:-}" ]; then
+  printf '%s' "$MAP_PASSWORD" | htpasswd -B -i -c /etc/landkarte/htpasswd "$MAP_USER"
+  chown root:www-data /etc/landkarte/htpasswd
+  chmod 640 /etc/landkarte/htpasswd
+  echo "Internal login written to /etc/landkarte/htpasswd"
+fi
+
+a2enmod rewrite auth_basic proxy proxy_http >/dev/null
+api_tmp="$(mktemp)"
+map_tmp="$(mktemp)"
 sed \
   -e "s|__API_HOST__|${API_HOST}|g" \
   -e "s|__APP_DIR__|${APP_DIR}|g" \
-  "${SCRIPT_DIR}/apache-api.conf" > /etc/apache2/sites-available/landkarte-api.conf
+  "${SCRIPT_DIR}/apache-api.conf" > "$api_tmp"
 sed \
   -e "s|__MAP_HOST__|${MAP_HOST}|g" \
   -e "s|__MAP_DIR__|${MAP_DIR}|g" \
-  "${SCRIPT_DIR}/apache-map.conf" > /etc/apache2/sites-available/landkarte-map.conf
+  "${SCRIPT_DIR}/apache-map.conf" > "$map_tmp"
+apply_auth "$api_tmp" /etc/apache2/sites-available/landkarte-api.conf
+map_auth="$(mktemp)"
+apply_auth "$map_tmp" "$map_auth"
+apply_api_proxy "$map_auth" /etc/apache2/sites-available/landkarte-map.conf
+rm -f "$api_tmp" "$map_tmp" "$map_auth"
 a2dissite 000-default >/dev/null || true
 a2ensite landkarte-api.conf landkarte-map.conf >/dev/null
 apachectl configtest
@@ -354,14 +549,26 @@ fi
 
 echo
 echo "API smoke check:"
-curl -sS -H "Host: ${API_HOST}" \
-  "http://127.0.0.1/item/list?types[]=laeden&countries[]=DE&products[]=cola" || true
-echo
+if [ "$MAP_MODE" = "internal" ]; then
+  api_code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: ${API_HOST}" \
+    "http://127.0.0.1/item/list?types[]=laeden&countries[]=DE&products[]=cola" || true)"
+  map_code="$(curl -sS -o /dev/null -w '%{http_code}' -H "Host: ${MAP_HOST}" \
+    "http://127.0.0.1/" || true)"
+  echo "API without password: HTTP ${api_code} (401 means the gate is up)"
+  echo "Map without password: HTTP ${map_code} (401 means the gate is up)"
+else
+  curl -sS -H "Host: ${API_HOST}" \
+    "http://127.0.0.1/item/list?types[]=laeden&countries[]=DE&products[]=cola" || true
+  echo
+fi
 echo
 echo "Next:"
 echo "  1. Put Collmex user, password and customer_id into ${APP_DIR}/app/config/config.php"
 echo "  2. Once DNS points here: ENABLE_TLS=1 TLS_EMAIL=... I_UNDERSTAND=1 bash $0"
 echo "  3. Rebuild the map later: I_UNDERSTAND=1 SKIP_PHOTON=1 bash $0"
+echo "Mode on this host: ${MAP_MODE} (/etc/landkarte/mode). A later run keeps it."
+echo "A new public map:  MAP_MODE=public  I_UNDERSTAND=1 bash $0"
+echo "A new internal map: MAP_MODE=internal MAP_USER=... MAP_PASSWORD=... I_UNDERSTAND=1 bash $0"
 echo "Database password: /etc/landkarte/db.env"
 echo "Frontend source: ${FRONTEND_SRC} → ${MAP_DIR}"
 echo "Geocoding: php ${APP_DIR}/app/cli.php update geo   (cron does this hourly)"

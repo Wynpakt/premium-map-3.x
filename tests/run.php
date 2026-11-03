@@ -154,7 +154,7 @@ test('postcode anchor prefers the area named like the zip', function () {
     assertSame(null, PhotonGeocoder::anchor(array($house), '12207'));
 });
 
-test('collmex row drops the phone at index 15 and keeps the fields the sync stores', function () {
+test('collmex row keeps the phone so only an internal host can store it', function () {
     $row = array_fill(0, 32, '');
     $row[0] = 'CMXADR';
     $row[1] = '99';
@@ -171,7 +171,9 @@ test('collmex row drops the phone at index 15 and keeps the fields the sync stor
     $row[31] = '124,8,20';
 
     $mapped = CollmexAddress::fromRow($row);
-    assertSame(false, array_key_exists('phone', $mapped));
+    assertSame('030123', $mapped['phone']);
+    assertSame(false, MapAudience::storesPhone('public'));
+    assertSame(true, MapAudience::storesPhone('internal'));
     assertSame('Torstraße 1', $mapped['street']);
     assertSame('10119', $mapped['zip']);
     assertSame('Berlin', $mapped['city']);
@@ -339,6 +341,42 @@ test('a shop leaves the map once when it is no longer in group 124', function ()
     ));
     assertSame(array('5' => true), $kept);
     assertSame(array(), SyncCleanup::keptIds(false));
+});
+
+test('an internal host keeps an address that is not in group 124', function () {
+    assertSame(false, MapAudience::storesAddress('public', array('8')));
+    assertSame(true, MapAudience::storesAddress('public', array('124', '8')));
+    assertSame(true, MapAudience::storesAddress('internal', array('8')));
+    assertSame(true, MapAudience::storesAddress('', array('124')));
+    assertSame(false, MapAudience::keepsWithoutOfferType('public'));
+    assertSame(true, MapAudience::keepsWithoutOfferType('internal'));
+    assertSame(true, MapAudience::clearsStoredPhones('public'));
+    assertSame(false, MapAudience::clearsStoredPhones('internal'));
+    $kept = SyncCleanup::keptIds(array(
+        array('address_id' => 7, 'collmex_address_groups' => '8'),
+    ), 'internal');
+    assertSame(array('7' => true), $kept);
+    $text = "<?php\nreturn array(\n    'collmex' => array(),\n);\n";
+    $patched = MapAudience::patchConfigText($text, 'internal');
+    assertContains("'audience' => 'internal'", $patched);
+    $again = MapAudience::patchConfigText($patched, 'public');
+    assertContains("'audience' => 'public'", $again);
+    assertNotContains("'audience' => 'internal'", $again);
+    $sync = file_get_contents(dirname(__DIR__) . '/app/tasks/UpdateTask.php');
+    assertContains('MapAudience::storesAddress', $sync);
+    assertContains('MapAudience::storesPhone', $sync);
+    assertContains('MapAudience::keepsWithoutOfferType', $sync);
+});
+
+test('installer self-check locks an internal map and leaves a public map open', function () {
+    $script = dirname(__DIR__) . '/docs/deploy/install-ubuntu-26.04.sh';
+    exec('bash ' . escapeshellarg($script) . ' --self-check', $out, $code);
+    assertSame(0, $code);
+    $api = file_get_contents(dirname(__DIR__) . '/docs/deploy/apache-api.conf');
+    $map = file_get_contents(dirname(__DIR__) . '/docs/deploy/apache-map.conf');
+    assertContains('__AUTH__', $api);
+    assertContains('__AUTH__', $map);
+    assertContains('__API_PROXY__', $map);
 });
 
 test('an empty collmex fetch is a failed sync', function () {

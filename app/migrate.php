@@ -4,6 +4,8 @@
  * Adds columns introduced after the original schema, for databases that
  * already exist (docker volume or production). Safe to run more than once.
  */
+require_once __DIR__ . '/lib/MapAudience.php';
+
 $config = include __DIR__ . '/config/config.php';
 
 $db = $config->database;
@@ -28,7 +30,11 @@ if ((int) $exists->fetchColumn() === 0) {
     echo "item.geocode_pending already present\n";
 }
 
-$cleared = $pdo->exec(
-    "UPDATE item SET phone = '' WHERE phone IS NOT NULL AND phone <> ''"
-);
-echo 'cleared stored phone numbers: ' . (int) $cleared . "\n";
+if (MapAudience::clearsStoredPhones(MapAudience::fromConfig($config))) {
+    $cleared = $pdo->exec(
+        "UPDATE item SET phone = '' WHERE phone IS NOT NULL AND phone <> ''"
+    );
+    echo 'cleared stored phone numbers: ' . (int) $cleared . "\n";
+} else {
+    echo "kept stored phone numbers\n";
+}
