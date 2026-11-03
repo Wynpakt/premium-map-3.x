@@ -261,31 +261,58 @@ class ItemController extends ControllerBase
                 }
 
                 $offertypes = [];
+                $offerTypeIds = [];
                 foreach ($item->offertypes as $ot) {
                     $offertypes[] = $ot->name;
+                    $offerTypeIds[] = (int) $ot->id;
                 }
 
-                $street = $item->street;
-
-                /*
-                 * if only speaker dont send the streenname
-                 */
-                if(count($item->offertypes) == 1 && $item->offertypes[0]->id == 3) {
-                    $street = '';
+                $contacts = array();
+                $groupNames = array();
+                if (MapAudience::isInternal($this->audience())) {
+                    $contactRows = ItemContact::find('item_id = ' . (int) $item->getId());
+                    if ($contactRows) {
+                        foreach ($contactRows as $contact) {
+                            $contacts[] = array(
+                                'name' => $contact->getName() . '',
+                                'department' => $contact->getDepartment() . '',
+                                'phone' => $contact->getPhone() . '',
+                                'phone2' => $contact->getPhone2() . '',
+                                'email' => $contact->getEmail() . '',
+                            );
+                        }
+                    }
+                    $groups = CollmexGroup::find();
+                    if ($groups) {
+                        foreach ($groups as $group) {
+                            $groupNames[(string) (int) $group->getCollmexId()] = $group->getName() . '';
+                        }
+                    }
                 }
 
-                return $this->jsonResponse([
-                    'id' => (int)$item->id,
-                    'name' => $item->name.'',
-                    'street' => $street.'',
+                return $this->jsonResponse(ShopDetail::payload($this->audience(), array(
+                    'id' => (int) $item->id,
+                    'name' => $item->name . '',
+                    'street' => $item->street . '',
                     'products' => $products,
                     'offertypes' => $offertypes,
-                    'city' => $item->city.'',
-                    'zip' => $item->zip.'',
-                    'web' => $item->web.'',
-                    'email' => $item->email.'',
-                    'uri' => $item->id
-                ]);
+                    'speaker_only' => count($offerTypeIds) === 1 && $offerTypeIds[0] === 3,
+                    'city' => $item->city . '',
+                    'zip' => $item->zip . '',
+                    'web' => $item->web . '',
+                    'email' => $item->email . '',
+                    'phone' => $item->getPhone() . '',
+                    'phone2' => $item->getPhone2() . '',
+                    'department' => $item->getDepartment() . '',
+                    'firstname' => $item->getFirstname() . '',
+                    'surname' => $item->getSurname() . '',
+                    'note' => $item->getNote() . '',
+                    'inactive' => $item->getInactive() . '',
+                    'no_mailings' => $item->getNoMailings() . '',
+                    'collmex_address_id' => $item->getCollmexAddressId() . '',
+                    'collmex_address_groups' => $item->getCollmexAddressGroups() . '',
+                    'contacts' => $contacts,
+                ), $groupNames));
             }
         }
         

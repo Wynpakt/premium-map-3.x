@@ -77,6 +77,48 @@ class Item extends \Phalcon\Mvc\Model
      */
     protected $phone;
 
+    /**
+     *
+     * @var string
+     */
+    protected $phone2;
+
+    /**
+     *
+     * @var string
+     */
+    protected $department;
+
+    /**
+     *
+     * @var string
+     */
+    protected $firstname;
+
+    /**
+     *
+     * @var string
+     */
+    protected $surname;
+
+    /**
+     *
+     * @var string
+     */
+    protected $note;
+
+    /**
+     *
+     * @var integer
+     */
+    protected $inactive;
+
+    /**
+     *
+     * @var integer
+     */
+    protected $no_mailings;
+
     /*
      * @var string
      */
@@ -256,6 +298,55 @@ class Item extends \Phalcon\Mvc\Model
         return $this;
     }
 
+    public function setPhone2($phone2)
+    {
+        $this->phone2 = $phone2;
+
+        return $this;
+    }
+
+    public function setDepartment($department)
+    {
+        $this->department = $department;
+
+        return $this;
+    }
+
+    public function setFirstname($firstname)
+    {
+        $this->firstname = $firstname;
+
+        return $this;
+    }
+
+    public function setSurname($surname)
+    {
+        $this->surname = $surname;
+
+        return $this;
+    }
+
+    public function setNote($note)
+    {
+        $this->note = $note;
+
+        return $this;
+    }
+
+    public function setInactive($inactive)
+    {
+        $this->inactive = $inactive;
+
+        return $this;
+    }
+
+    public function setNoMailings($no_mailings)
+    {
+        $this->no_mailings = $no_mailings;
+
+        return $this;
+    }
+
     public function setCollmexAddressGroups($collmex_address_groups)
     {
         $this->collmex_address_groups = $collmex_address_groups;
@@ -407,6 +498,41 @@ class Item extends \Phalcon\Mvc\Model
     public function getPhone()
     {
         return $this->phone;
+    }
+
+    public function getPhone2()
+    {
+        return $this->phone2;
+    }
+
+    public function getDepartment()
+    {
+        return $this->department;
+    }
+
+    public function getFirstname()
+    {
+        return $this->firstname;
+    }
+
+    public function getSurname()
+    {
+        return $this->surname;
+    }
+
+    public function getNote()
+    {
+        return $this->note;
+    }
+
+    public function getInactive()
+    {
+        return $this->inactive;
+    }
+
+    public function getNoMailings()
+    {
+        return $this->no_mailings;
     }
 
     public function getCollmexAddressGroups()
@@ -575,6 +701,13 @@ class Item extends \Phalcon\Mvc\Model
             'web' => 'web', 
             'email' => 'email',
             'phone' => 'phone',
+            'phone2' => 'phone2',
+            'department' => 'department',
+            'firstname' => 'firstname',
+            'surname' => 'surname',
+            'note' => 'note',
+            'inactive' => 'inactive',
+            'no_mailings' => 'no_mailings',
             'collmex_address_groups' => 'collmex_address_groups',
             'location_checked' => 'location_checked', 
             'geolocate_count' => 'geolocate_count',

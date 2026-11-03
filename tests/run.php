@@ -184,6 +184,68 @@ test('collmex row keeps the phone so only an internal host can store it', functi
     assertSame(null, CollmexAddress::fromRow(array('CMXKND')));
 });
 
+test('collmex row keeps the staff fields an internal popup needs', function () {
+    $row = array_fill(0, 38, '');
+    $row[0] = 'CMXADR';
+    $row[1] = '99';
+    $row[2] = '0';
+    $row[5] = 'Ada';
+    $row[6] = 'Lovelace';
+    $row[7] = 'Premium Laden';
+    $row[8] = 'Einkauf';
+    $row[12] = 'nur vormittags';
+    $row[13] = '1';
+    $row[25] = '1';
+    $row[26] = '0171';
+
+    $mapped = CollmexAddress::fromRow($row);
+    assertSame('Einkauf', $mapped['department']);
+    assertSame('Ada', $mapped['firstname']);
+    assertSame('Lovelace', $mapped['surname']);
+    assertSame('nur vormittags', $mapped['note']);
+    assertSame('1', $mapped['inactive']);
+    assertSame('1', $mapped['no_mailings']);
+    assertSame('0171', $mapped['phone2']);
+    assertSame(false, CollmexAddress::isContact($mapped));
+});
+
+test('a contact row belongs to the shop address and keeps its own number', function () {
+    $row = array_fill(0, 38, '');
+    $row[0] = 'CMXADR';
+    $row[1] = '99';
+    $row[2] = '4';
+    $row[5] = 'Grace';
+    $row[6] = 'Hopper';
+    $row[8] = 'Einkauf';
+    $row[15] = '030111';
+    $row[17] = 'grace@example.test';
+    $row[26] = '0171999';
+    $row[37] = '501';
+
+    $mapped = CollmexAddress::fromRow($row);
+    assertSame(true, CollmexAddress::isContact($mapped));
+    $contact = CollmexAddress::contact($mapped);
+    assertSame(99, $contact['parent_id']);
+    assertSame(501, $contact['collmex_id']);
+    assertSame('Grace Hopper', $contact['name']);
+    assertSame('Einkauf', $contact['department']);
+    assertSame('030111', $contact['phone']);
+    assertSame('0171999', $contact['phone2']);
+    assertSame('grace@example.test', $contact['email']);
+
+    $book = CollmexAddress::contactsFor(array(
+        $mapped,
+        array('address_type' => '0', 'address_id' => '99'),
+    ));
+    assertSame('Grace Hopper', $book[99][0]['name']);
+    $shops = CollmexAddress::shops(array(
+        array('address_type' => '0', 'address_id' => '5'),
+        $mapped,
+    ));
+    assertSame(1, count($shops));
+    assertSame('5', $shops[0]['address_id']);
+});
+
 test('address change keeps the old pin and marks geocoding pending', function () {
     $changed = AddressChange::addressDiffers('Alt 1', '10115', 'Berlin', 'Neu 2', '10115', 'Berlin');
     $next = AddressChange::nextGeoState($changed, '52.5', '13.4', 7, 0);
@@ -484,6 +546,97 @@ test('internal group match does not treat 160 as former', function () {
     assertSame(false, AddressGroup::contains('160', '16'));
     assertSame(false, AddressGroup::contains('124', '16'));
 });
+
+test('internal address fetch asks collmex for contacts and inactive rows', function () {
+    assertSame(array('ADDRESS_GET'), explode(';', CollmexFetch::addresses('public')));
+    $internal = explode(';', CollmexFetch::addresses('internal'));
+    assertSame('ADDRESS_GET', $internal[0]);
+    assertSame('1', $internal[9]);
+    assertSame('', $internal[10]);
+    assertSame('1', $internal[11]);
+    assertSame(array('ADDRESS_GROUPS_GET'), explode(';', CollmexFetch::groups()));
+});
+
+test('address group row keeps the collmex number and name', function () {
+    assertSame(
+        array('id' => 8, 'name' => 'Laden'),
+        CollmexAddressGroup::fromRow(array('ADRGRP', '8', 'Laden'))
+    );
+    assertSame(null, CollmexAddressGroup::fromRow(array('CMXADR', '8', 'Laden')));
+    assertSame(null, CollmexAddressGroup::fromRow(array('ADRGRP', '0', 'Laden')));
+});
+
+test('address group labels prefer collmex names and otherwise a known word or the number', function () {
+    assertSame(array('Laden', '77'), AddressGroup::labels('8,77', array()));
+    assertSame(array('Markt', '77'), AddressGroup::labels('8,77', array('8' => 'Markt')));
+    assertSame(array(), AddressGroup::labels('', array()));
+});
+
+test('public detail omits staff fields and hides a speaker street', function () {
+    $public = ShopDetail::payload('public', shopDetailFixture(), array('8' => 'Laden'));
+    assertSame('', $public['street']);
+    assertSame(false, array_key_exists('phone', $public));
+    assertSame(false, array_key_exists('note', $public));
+    assertSame(false, array_key_exists('contacts', $public));
+    assertSame(false, array_key_exists('groups', $public));
+});
+
+test('internal detail shows phone, person, groups, note and contacts', function () {
+    $detail = ShopDetail::payload('internal', shopDetailFixture(), array('8' => 'Aus Collmex'));
+    assertSame('Torstraße 1', $detail['street']);
+    assertSame('030123', $detail['phone']);
+    assertSame('0171', $detail['phone2']);
+    assertSame('Ada Lovelace', $detail['person']);
+    assertSame('Einkauf', $detail['department']);
+    assertSame('nur vormittags', $detail['note']);
+    assertSame(true, $detail['inactive']);
+    assertSame(true, $detail['no_mailings']);
+    assertSame(99, $detail['collmex_id']);
+    assertSame('Aus Collmex', $detail['groups'][0]);
+    assertSame('ehemalige Kunden', $detail['groups'][1]);
+    assertSame('Grace Hopper', $detail['contacts'][0]['name']);
+    assertSame('030111', $detail['contacts'][0]['phone']);
+});
+
+test('internal detail skips a person line that repeats the shop name', function () {
+    $shop = shopDetailFixture();
+    $shop['name'] = 'Ada Lovelace';
+    $shop['speaker_only'] = false;
+    assertSame('', ShopDetail::payload('internal', $shop, array())['person']);
+});
+
+function shopDetailFixture()
+{
+    return array(
+        'id' => 7,
+        'name' => 'Premium Laden',
+        'street' => 'Torstraße 1',
+        'city' => 'Berlin',
+        'zip' => '10119',
+        'web' => 'https://example.test',
+        'email' => 'ada@example.test',
+        'products' => array('Cola'),
+        'offertypes' => array('Sprecher'),
+        'speaker_only' => true,
+        'phone' => '030123',
+        'phone2' => '0171',
+        'department' => 'Einkauf',
+        'firstname' => 'Ada',
+        'surname' => 'Lovelace',
+        'note' => 'nur vormittags',
+        'inactive' => '1',
+        'no_mailings' => '1',
+        'collmex_address_id' => '99',
+        'collmex_address_groups' => '8,16',
+        'contacts' => array(array(
+            'name' => 'Grace Hopper',
+            'department' => 'Einkauf',
+            'phone' => '030111',
+            'phone2' => '',
+            'email' => 'grace@example.test',
+        )),
+    );
+}
 
 test('item list rejects an internal filter that is not an array', function () {
     assertSame(true, ListQuery::rejected(array('status' => 'ehemalig')));

@@ -151,7 +151,7 @@ class BaseTask extends \Phalcon\Cli\Task
         return $this->collmexCsvParse($csv);
     }
 
-    public function collmexAddressGet() {
+    public function collmexAddressGet($query = 'ADDRESS_GET') {
 
         // dev caching
         /*
@@ -163,7 +163,7 @@ class BaseTask extends \Phalcon\Cli\Task
         }
         */
 
-        if($data = $this->collmexGet('ADDRESS_GET')){
+        if($data = $this->collmexGet($query)){
             $out = [];
             foreach ($data as $d) {
                 $mapped = CollmexAddress::fromRow($d);

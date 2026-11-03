@@ -89,10 +89,13 @@ class UpdateTask extends BaseTask
         /*
          * get all customers from collmex
          */
-        $records = $this->collmexAddressGet();
+        $records = $this->collmexAddressGet(CollmexFetch::addresses($this->audience()));
         if (SyncRun::emptyFetch($records)) {
             $this->error('Collmex lieferte keine Adressen.');
         }
+        $this->syncGroupNames();
+        $contactsByParent = CollmexAddress::contactsFor($records);
+        $storeStaff = MapAudience::storesPhone($this->audience());
 
         $new_records = 0;
         $updated_records = 0;
@@ -100,7 +103,7 @@ class UpdateTask extends BaseTask
         $unused_records = 0;
         $failed_saves = 0;
 
-            foreach ($records as $record) {
+            foreach (CollmexAddress::shops($records) as $record) {
 
                 if ($data = $this->addressCleanup($record)) {
                     $collmex_groups = explode(',',$data['collmex_address_groups']);
@@ -162,7 +165,14 @@ class UpdateTask extends BaseTask
                     $item->setEmail(ShopEmail::stored(isset($data['email']) ? $data['email'] : ''));
 
                     $phone = isset($data['phone']) ? trim((string) $data['phone']) : '';
-                    $item->setPhone(MapAudience::storesPhone($this->audience()) ? $phone : '');
+                    $item->setPhone($storeStaff ? $phone : '');
+                    $item->setPhone2($storeStaff ? $this->staffText($data, 'phone2') : '');
+                    $item->setDepartment($storeStaff ? $this->staffText($data, 'department') : '');
+                    $item->setFirstname($storeStaff ? $this->staffText($data, 'firstname') : '');
+                    $item->setSurname($storeStaff ? $this->staffText($data, 'surname') : '');
+                    $item->setNote($storeStaff ? $this->staffText($data, 'note') : '');
+                    $item->setInactive($storeStaff && $this->staffText($data, 'inactive') === '1' ? 1 : 0);
+                    $item->setNoMailings($storeStaff && $this->staffText($data, 'no_mailings') === '1' ? 1 : 0);
 
                     /*
                      * save values in model object
@@ -192,6 +202,7 @@ class UpdateTask extends BaseTask
                     elseif (!MapAudience::keepsWithoutOfferType($this->audience())) {
                         $unused_records++;
                         echo $item->name . ': ' . $item->city . '; ';
+                        $this->deleteContacts($item);
                         $item->delete();
                         continue;
                     }
@@ -208,6 +219,11 @@ class UpdateTask extends BaseTask
                         echo 'Fehler: could not save item address_id => ' . $data['address_id'] . PHP_EOL;
                         continue;
                     }
+                    $parentId = (int) $data['address_id'];
+                    $contacts = ($storeStaff && isset($contactsByParent[$parentId]))
+                        ? $contactsByParent[$parentId]
+                        : array();
+                    $this->replaceContacts($item, $contacts);
                 }
             }
 
@@ -226,14 +242,14 @@ class UpdateTask extends BaseTask
     }
 
     public function deleteOldEntries() {
-        $collmexItems = $this->collmexAddressGet();
+        $collmexItems = $this->collmexAddressGet(CollmexFetch::addresses($this->audience()));
         if (SyncRun::emptyFetch($collmexItems)) {
             echo 'Collmex lieferte keine Adressen, nichts gelöscht.' . PHP_EOL;
             return 0;
         }
 
         $cleaned = array();
-        foreach ($collmexItems as $collmexItem) {
+        foreach (CollmexAddress::shops($collmexItems) as $collmexItem) {
             $data = $this->addressCleanup($collmexItem);
             if ($data) {
                 $cleaned[] = $data;
@@ -253,6 +269,7 @@ class UpdateTask extends BaseTask
             }
             $databaseItem->deleteOffertypes();
             $databaseItem->deleteProducts();
+            $this->deleteContacts($databaseItem);
             $databaseItem->delete();
             $deleted++;
         }
@@ -589,6 +606,69 @@ class UpdateTask extends BaseTask
     private function audience()
     {
         return MapAudience::fromConfig($this->config);
+    }
+
+    private function syncGroupNames()
+    {
+        if (!MapAudience::isInternal($this->audience())) {
+            return;
+        }
+        $rows = $this->collmexGet(CollmexFetch::groups());
+        if (!is_array($rows)) {
+            return;
+        }
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $mapped = CollmexAddressGroup::fromRow($row);
+            if ($mapped === null) {
+                continue;
+            }
+            $group = CollmexGroup::findFirst('collmex_id = ' . (int) $mapped['id']);
+            if (!$group) {
+                $group = new CollmexGroup();
+                $group->setCollmexId($mapped['id']);
+            }
+            $group->setName($mapped['name']);
+            $group->save();
+        }
+    }
+
+    private function staffText(array $data, $key)
+    {
+        return isset($data[$key]) ? trim((string) $data[$key]) : '';
+    }
+
+    private function replaceContacts($item, array $contacts)
+    {
+        $this->deleteContacts($item);
+        foreach ($contacts as $contact) {
+            $row = new ItemContact();
+            $row->setItemId((int) $item->getId());
+            $row->setCollmexId((int) $contact['collmex_id']);
+            $row->setName($contact['name']);
+            $row->setDepartment($contact['department']);
+            $row->setPhone($contact['phone']);
+            $row->setPhone2($contact['phone2']);
+            $row->setEmail($contact['email']);
+            $row->save();
+        }
+    }
+
+    private function deleteContacts($item)
+    {
+        $id = (int) $item->getId();
+        if ($id <= 0) {
+            return;
+        }
+        $rows = ItemContact::find('item_id = ' . $id);
+        if (!$rows) {
+            return;
+        }
+        foreach ($rows as $row) {
+            $row->delete();
+        }
     }
 
     /**
