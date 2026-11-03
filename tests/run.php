@@ -136,6 +136,30 @@ test('address change keeps the old pin and marks geocoding pending', function ()
     assertSame(0, $same['geocode_pending']);
 });
 
+test('feedback rejects a long body and a sixth send in the hour', function () {
+    assertSame(false, FeedbackGate::tooLong(str_repeat('a', 4000)));
+    assertSame(true, FeedbackGate::tooLong(str_repeat('a', 4001)));
+    $stamps = array(1000, 1001, 1002, 1003, 1004);
+    list($ok, $kept) = FeedbackGate::allow($stamps, 1005);
+    assertSame(false, $ok);
+    assertSame(5, count($kept));
+    list($ok, $kept) = FeedbackGate::allow(array(1000), 1000 + 3600);
+    assertSame(true, $ok);
+    assertSame(array(4600), $kept);
+    $dir = sys_get_temp_dir() . '/landkarte-feedback-test-' . getmypid();
+    mkdir($dir);
+    try {
+        for ($i = 0; $i < 5; $i++) {
+            assertSame(true, FeedbackGate::remember('203.0.113.5', 1000 + $i, $dir));
+        }
+        assertSame(false, FeedbackGate::remember('203.0.113.5', 1005, $dir));
+    } finally {
+        $path = $dir . '/landkarte-feedback-' . hash('sha256', '203.0.113.5');
+        @unlink($path);
+        @rmdir($dir);
+    }
+});
+
 test('feedback contacts are read from the app config file', function () {
     $path = FeedbackRouter::contactsPath();
     assertSame(dirname(__DIR__) . '/app/config/feedback.txt', $path);

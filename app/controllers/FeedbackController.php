@@ -40,6 +40,11 @@ class FeedbackController extends ControllerBase
                     $from = $_POST['email'];
                 }
 
+                $blocked = $this->rejectFlood($feedback);
+                if ($blocked) {
+                    return $blocked;
+                }
+
                 $contacts = FeedbackRouter::parseLines(file_get_contents(FeedbackRouter::contactsPath()));
                 $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
@@ -83,6 +88,11 @@ class FeedbackController extends ControllerBase
             return $this->jsonResponseError('Name und Nachricht dürfen nicht leer sein.');
         }
 
+        $blocked = $this->rejectFlood($text);
+        if ($blocked) {
+            return $blocked;
+        }
+
         $contacts = FeedbackRouter::parseLines(file_get_contents(FeedbackRouter::contactsPath()));
         $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
@@ -102,6 +112,18 @@ class FeedbackController extends ControllerBase
         }
 
         return $this->jsonResponseError('Nachricht konnte nicht gesendet werden, weil die eMail nicht rausging.');
+    }
+
+    private function rejectFlood($text)
+    {
+        if (FeedbackGate::tooLong($text)) {
+            return $this->jsonResponseError('Die Nachricht ist zu lang.');
+        }
+        $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+        if (!FeedbackGate::remember($ip, time(), sys_get_temp_dir())) {
+            return $this->jsonResponseError('Zu viele Nachrichten. Bitte später noch einmal versuchen.');
+        }
+        return null;
     }
 
 }
