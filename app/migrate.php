@@ -44,11 +44,71 @@ if ((int) $width->fetchColumn() < 512) {
     echo "item.collmex_address_groups already wide enough\n";
 }
 
+$staffColumns = array(
+    'phone2' => "varchar(40) NOT NULL DEFAULT ''",
+    'department' => "varchar(80) NOT NULL DEFAULT ''",
+    'firstname' => "varchar(40) NOT NULL DEFAULT ''",
+    'surname' => "varchar(40) NOT NULL DEFAULT ''",
+    'note' => "varchar(1024) NOT NULL DEFAULT ''",
+    'inactive' => 'tinyint(1) unsigned NOT NULL DEFAULT 0',
+    'no_mailings' => 'tinyint(1) unsigned NOT NULL DEFAULT 0',
+);
+foreach ($staffColumns as $column => $definition) {
+    $exists->execute(array($db->dbname, 'item', $column));
+    if ((int) $exists->fetchColumn() === 0) {
+        $pdo->exec('ALTER TABLE item ADD COLUMN ' . $column . ' ' . $definition);
+        echo 'added item.' . $column . "\n";
+    } else {
+        echo 'item.' . $column . " already present\n";
+    }
+}
+
+$tableExists = $pdo->prepare(
+    'SELECT COUNT(*) FROM information_schema.TABLES
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?'
+);
+$tableExists->execute(array($db->dbname, 'item_contact'));
+if ((int) $tableExists->fetchColumn() === 0) {
+    $pdo->exec(
+        "CREATE TABLE item_contact (
+            id int(10) unsigned NOT NULL AUTO_INCREMENT,
+            item_id int(10) unsigned NOT NULL,
+            collmex_id int(10) unsigned NOT NULL DEFAULT 0,
+            name varchar(120) NOT NULL DEFAULT '',
+            department varchar(80) NOT NULL DEFAULT '',
+            phone varchar(40) NOT NULL DEFAULT '',
+            phone2 varchar(40) NOT NULL DEFAULT '',
+            email varchar(120) NOT NULL DEFAULT '',
+            PRIMARY KEY (id),
+            KEY item_id (item_id),
+            CONSTRAINT item_contact_item_id FOREIGN KEY (item_id) REFERENCES item (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8"
+    );
+    echo "added item_contact\n";
+} else {
+    echo "item_contact already present\n";
+}
+
+$tableExists->execute(array($db->dbname, 'address_group'));
+if ((int) $tableExists->fetchColumn() === 0) {
+    $pdo->exec(
+        "CREATE TABLE address_group (
+            collmex_id int(10) unsigned NOT NULL,
+            name varchar(255) NOT NULL,
+            PRIMARY KEY (collmex_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8"
+    );
+    echo "added address_group\n";
+} else {
+    echo "address_group already present\n";
+}
+
 if (MapAudience::clearsStoredPhones(MapAudience::fromConfig($config))) {
     $cleared = $pdo->exec(
-        "UPDATE item SET phone = '' WHERE phone IS NOT NULL AND phone <> ''"
+        "UPDATE item SET phone = '', phone2 = '', department = '', firstname = '', surname = '', note = '', inactive = 0, no_mailings = 0"
     );
-    echo 'cleared stored phone numbers: ' . (int) $cleared . "\n";
+    $pdo->exec('DELETE FROM item_contact');
+    echo 'cleared stored staff details: ' . (int) $cleared . "\n";
 } else {
-    echo "kept stored phone numbers\n";
+    echo "kept stored staff details\n";
 }

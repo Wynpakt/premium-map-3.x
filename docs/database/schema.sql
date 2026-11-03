@@ -34,7 +34,14 @@ CREATE TABLE `item` (
   `lng` decimal(11,8) DEFAULT NULL,
   `web` varchar(120) DEFAULT NULL,
   `email` varchar(120) DEFAULT NULL,
-  `phone` varchar(60) DEFAULT NULL, -- unused; Collmex phone can be private and must stay empty
+  `phone` varchar(60) DEFAULT NULL,
+  `phone2` varchar(40) NOT NULL DEFAULT '',
+  `department` varchar(80) NOT NULL DEFAULT '',
+  `firstname` varchar(40) NOT NULL DEFAULT '',
+  `surname` varchar(40) NOT NULL DEFAULT '',
+  `note` varchar(1024) NOT NULL DEFAULT '',
+  `inactive` tinyint(1) unsigned NOT NULL DEFAULT '0',
+  `no_mailings` tinyint(1) unsigned NOT NULL DEFAULT '0',
   `collmex_address_groups` varchar(512) NOT NULL,
   `location_checked` tinyint(1) unsigned DEFAULT '0',
   `geolocate_count` int(10) unsigned DEFAULT '0',
@@ -43,6 +50,36 @@ CREATE TABLE `item` (
   UNIQUE KEY `collmex_address_id` (`collmex_address_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=1360 DEFAULT CHARSET=utf8;
 /*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Table structure for table `item_contact`
+--
+
+DROP TABLE IF EXISTS `item_contact`;
+CREATE TABLE `item_contact` (
+  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+  `item_id` int(10) unsigned NOT NULL,
+  `collmex_id` int(10) unsigned NOT NULL DEFAULT '0',
+  `name` varchar(120) NOT NULL DEFAULT '',
+  `department` varchar(80) NOT NULL DEFAULT '',
+  `phone` varchar(40) NOT NULL DEFAULT '',
+  `phone2` varchar(40) NOT NULL DEFAULT '',
+  `email` varchar(120) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`),
+  KEY `item_id` (`item_id`),
+  CONSTRAINT `item_contact_item_id` FOREIGN KEY (`item_id`) REFERENCES `item` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+--
+-- Table structure for table `address_group`
+--
+
+DROP TABLE IF EXISTS `address_group`;
+CREATE TABLE `address_group` (
+  `collmex_id` int(10) unsigned NOT NULL,
+  `name` varchar(255) NOT NULL,
+  PRIMARY KEY (`collmex_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 --
 -- Table structure for table `item_has_offertype`
