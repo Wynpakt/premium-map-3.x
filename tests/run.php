@@ -691,4 +691,28 @@ test('address group filter matches imported ids and a full selection adds nothin
     assertNotContains('FIND_IN_SET', $none);
 });
 
+test('a pin needs a street, a postcode and a city', function () {
+    assertSame(true, MapAddress::complete('Torstraße 1', '10119', 'Berlin'));
+    assertSame(false, MapAddress::complete('', '10119', 'Berlin'));
+    assertSame(false, MapAddress::complete('   ', '10119', 'Berlin'));
+    assertSame(false, MapAddress::complete('Torstraße 1', '', 'Berlin'));
+    assertSame(false, MapAddress::complete('Torstraße 1', '10119', ''));
+    assertSame(false, MapAddress::complete('Torstraße 1', '10119', '  '));
+});
+
+test('map queries drop an address that has no street, postcode or city', function () {
+    $queries = array(
+        MarkerQuery::sql(array('DE'), array('cola')),
+        InternalFilter::sql(array(
+            'types' => array('laeden', 'haendler', 'sprecher', 'webshop', 'ohne'),
+        )),
+        SearchQuery::sql(),
+    );
+    foreach ($queries as $sql) {
+        assertContains("TRIM(item.street) <> ''", $sql);
+        assertContains("TRIM(item.zip) <> ''", $sql);
+        assertContains("TRIM(item.city) <> ''", $sql);
+    }
+});
+
 finished();

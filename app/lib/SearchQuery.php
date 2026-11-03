@@ -10,7 +10,8 @@ class SearchQuery
     public static function sql()
     {
         return 'SELECT item.* FROM item'
-            . ' WHERE (item.name LIKE :q OR item.city LIKE :q OR item.zip LIKE :q OR item.street LIKE :q)'
+            . ' WHERE ' . MapAddress::sql()
+            . ' AND (item.name LIKE :q OR item.city LIKE :q OR item.zip LIKE :q OR item.street LIKE :q)'
             . ' AND EXISTS (SELECT 1 FROM item_has_offertype ho WHERE ho.item_id = item.id)'
             . ' AND EXISTS (SELECT 1 FROM item_has_product hp WHERE hp.item_id = item.id)'
             . ' LIMIT ' . (int) self::LIMIT;

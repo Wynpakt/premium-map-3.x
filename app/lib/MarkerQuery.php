@@ -50,7 +50,8 @@ class MarkerQuery
         $sql = 'SELECT item.id, item.lat, item.lng, ho.offertype_id AS offertype, item.collmex_address_groups'
             . ' FROM item, item_has_offertype ho, item_has_product hp, product'
             . ' WHERE ho.item_id = item.id AND hp.item_id = item.id AND hp.product_id = product.id'
-            . ' AND item.lat IS NOT NULL AND item.lng IS NOT NULL';
+            . ' AND item.lat IS NOT NULL AND item.lng IS NOT NULL'
+            . ' AND ' . MapAddress::sql();
         $sql .= self::orEquals('item.country', self::tokens($countries));
         $sql .= self::orEquals('product.name', self::tokens($products));
 
