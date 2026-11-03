@@ -7,6 +7,9 @@ class ItemController extends ControllerBase
         $items = Item::find();
         $cleaned = [];
         foreach($items as $item) {
+            if (MarkerQuery::isHidden($item->getCollmexAddressGroups())) {
+                continue;
+            }
             $cleaned_item = array();
 
             $products = array();
@@ -64,6 +67,9 @@ class ItemController extends ControllerBase
 
         $out = array();
         foreach ($items as $itemRow) {
+            if (MarkerQuery::isHidden($itemRow->getCollmexAddressGroups())) {
+                continue;
+            }
             if (count($itemRow->offertypes) == 0 || count($itemRow->products) == 0) {
                 continue;
             }
@@ -137,15 +143,7 @@ class ItemController extends ControllerBase
 
             $out = [];
             foreach ($items as $r) {
-                $collmex_groups = explode(',',$r->getCollmexAddressGroups());
-
-                /*
-                 * Hide items in group 16 or 93.
-                 * 
-                 * 16: ehemalige Kunden
-                 * 93: möchte auf eigenen Wunsch nicht auf die Landkarte
-                 */
-                if(in_array('93',$collmex_groups) || in_array('16',$collmex_groups)){
+                if (MarkerQuery::isHidden($r->getCollmexAddressGroups())) {
                     continue;
                 }
 
@@ -192,6 +190,9 @@ class ItemController extends ControllerBase
         
         if($id = (int)$this->dispatcher->getParam('id')) {
             if($item = Item::findFirst($id)) {
+                if (MarkerQuery::isHidden($item->getCollmexAddressGroups())) {
+                    return $this->jsonResponseError();
+                }
 
                 $products = [];
                 

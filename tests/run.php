@@ -22,6 +22,13 @@ test('marker query with nothing selected matches nothing', function () {
     assertContains('1=0', $sql);
 });
 
+test('groups 16 and 93 stay off the map', function () {
+    assertSame(true, MarkerQuery::isHidden('124,93'));
+    assertSame(true, MarkerQuery::isHidden('16,8'));
+    assertSame(false, MarkerQuery::isHidden('124,8,20'));
+    assertSame(false, MarkerQuery::isHidden('160'));
+});
+
 test('marker query drops values that are not plain tokens', function () {
     $sql = MarkerQuery::sql(array("DE' OR 1=1 --"), array('cola'));
     assertNotContains('OR 1=1', $sql);
