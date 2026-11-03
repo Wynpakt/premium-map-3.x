@@ -213,6 +213,14 @@ test('public router does not install phalcon default routes', function () {
     assertContains('Router(false)', $src);
 });
 
+test('public front script does not print exception text', function () {
+    $src = file_get_contents(dirname(__DIR__) . '/public/index.php');
+    assertContains("display_errors', '0'", $src);
+    assertContains('http_response_code(404)', $src);
+    assertContains('http_response_code(500)', $src);
+    assertNotContains('echo $e->getMessage()', $src);
+});
+
 test('street compare folds straße and ignores punctuation', function () {
     assertSame(false, StreetCompare::differs('Torstraße 1', 'Torstr. 1'));
     assertSame(true, StreetCompare::differs('Torstraße 1', 'Linienstraße 1'));
