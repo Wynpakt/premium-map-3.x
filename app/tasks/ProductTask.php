@@ -17,7 +17,7 @@ class ProductTask extends BaseTask {
             if($product->description) {
                 $description = $product->description;
             }
-            printf($mask, $product->id, $product->name, $description, $product->collmexId);
+            printf($mask, $product->id, $product->name, $description, $product->getCollmexId());
         }
     }
 
