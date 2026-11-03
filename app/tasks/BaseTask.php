@@ -159,7 +159,8 @@ class BaseTask extends \Phalcon\Cli\Task
         fwrite($tmpHandle, $csv);
         rewind($tmpHandle);
         $data = [];
-        while ($line = fgetcsv($tmpHandle, 0, ';', '"')) {
+        // Explicit backslash keeps the pre-PHP-8.4 parse and stays out of sync.log.
+        while ($line = fgetcsv($tmpHandle, 0, ';', '"', '\\')) {
 
             $data[] = $line;
         }

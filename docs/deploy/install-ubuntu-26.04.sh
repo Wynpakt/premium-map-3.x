@@ -267,6 +267,7 @@ install -d -o www-data -g www-data /var/log/landkarte
 sed "s|/var/www/api.landkarte.premium-cola.de|${APP_DIR}|g" \
   "${APP_DIR}/docs/cron/landkarte.cron" > /etc/cron.d/landkarte
 chmod 644 /etc/cron.d/landkarte
+install -m 644 "${SCRIPT_DIR}/logrotate-landkarte" /etc/logrotate.d/landkarte
 
 if [ "$SKIP_PHOTON" != "1" ]; then
   echo "Installing Photon 0.5 (DE, AT, CH)"
