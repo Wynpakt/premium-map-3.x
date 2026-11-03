@@ -285,45 +285,38 @@ class UpdateTask extends BaseTask
     }
 
     public function deleteOldEntries() {
-        $databaseItems = Item::find();
         $collmexItems = $this->collmexAddressGet();
-
-        $unknownItemsCount = 0;
-        $knownItemsCount = 0;
-
-        foreach($databaseItems as $databaseItem) {
-            $databaseId = $databaseItem->getCollmexAddressId();
-            $isKnownItem = false;
-            foreach($collmexItems as $collmexItem) {
-                $collmexId = $collmexItem['address_id'];
-                if($databaseId == $collmexId) {
-                    $data = $this->addressCleanup($collmexItem);
-                    $collmex_groups = explode(',',$data['collmex_address_groups']);
-                    /*
-                     * 124: möchten auf die Landkarte
-                     */
-                    if(!in_array('124',$collmex_groups)){
-                        $unknownItemsCount++;
-                        $databaseItem->deleteOffertypes();
-                        $databaseItem->deleteProducts();
-                        $databaseItem->delete();
-                    } else {
-                        $isKnownItem = true;
-                    }
-                }
-            }
-
-            if($isKnownItem) {
-                $knownItemsCount++;
-            } else {
-                $unknownItemsCount++;
-                $databaseItem->deleteOffertypes();
-                $databaseItem->deleteProducts();
-                $databaseItem->delete();
-            }
+        if (SyncRun::emptyFetch($collmexItems)) {
+            echo 'Collmex lieferte keine Adressen, nichts gelöscht.' . PHP_EOL;
+            return 0;
         }
 
-        return $unknownItemsCount;
+        $cleaned = array();
+        foreach ($collmexItems as $collmexItem) {
+            $data = $this->addressCleanup($collmexItem);
+            if ($data) {
+                $cleaned[] = $data;
+            }
+        }
+        if (count($cleaned) === 0) {
+            echo 'Collmex lieferte keine brauchbaren Adressen, nichts gelöscht.' . PHP_EOL;
+            return 0;
+        }
+
+        $kept = SyncCleanup::keptIds($cleaned);
+        $deleted = 0;
+        foreach (Item::find() as $databaseItem) {
+            $id = (string) (int) $databaseItem->getCollmexAddressId();
+            if (isset($kept[$id])) {
+                continue;
+            }
+            $databaseItem->deleteOffertypes();
+            $databaseItem->deleteProducts();
+            $databaseItem->delete();
+            $deleted++;
+        }
+
+        return $deleted;
     }
 
     public function mapProducts($collmex_group_ids) {
