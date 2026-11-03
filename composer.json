@@ -2,14 +2,10 @@
   "name": "raphi/premium-map",
   "description": "Backend service for the Premium Landkarte",
   "require": {
-    "php": ">=8.4",
-    "mjaschen/collmex": "^3.13",
-    "symfony/mailer": "^8.1",
-    "symfony/event-dispatcher": "^8.1",
-    "symfony/finder": "^8.1",
-    "symfony/http-foundation": "^8.1",
-    "symfony/mime": "^8.1",
-    "symfony/string": "^8.1"
+        "php": ">=8.4",
+        "symfony/mailer": "^8.1",
+        "symfony/event-dispatcher": "^8.1",
+        "symfony/mime": "^8.1"
   },
   "authors": [
     {

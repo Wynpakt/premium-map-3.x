@@ -4,23 +4,6 @@ class BaseTask extends \Phalcon\Cli\Task
 {
     public $collmex_curl;
 
-    public function countryMapper($country) {
-        
-        $country = trim($country);
-        
-        $countrys = [
-            'DE' => 'Germany',
-            'AT' => 'Austria',
-            'CH' => 'Switzerland'
-        ];
-        
-        if(isset($countrys[$country])) {
-            return $countrys[$country];
-        }
-        
-        return $country;
-    }
-
     /**
      * Locate an address via the local Photon instance for that country.
      *
