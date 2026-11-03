@@ -401,7 +401,7 @@ class UpdateTask extends BaseTask
                     }
 
                     if ($geo === false) {
-                        echo PHP_EOL . 'Abbruch: Photon Rate-Limit. Später erneut: php app/cli.php update geo' . PHP_EOL;
+                        echo PHP_EOL . 'Abbruch: Photon nicht erreichbar. Später erneut: php app/cli.php update geo' . PHP_EOL;
                         break;
                     }
 
@@ -505,7 +505,7 @@ class UpdateTask extends BaseTask
             }
             $geo = $this->getCoordinates($item->getStreet(), $item->getZip(), $item->getCity(), $item->getCountry());
             if ($geo === false) {
-                echo 'Abbruch: Photon Rate-Limit.' . PHP_EOL;
+                echo 'Abbruch: Photon nicht erreichbar.' . PHP_EOL;
                 break;
             }
             $checked++;
