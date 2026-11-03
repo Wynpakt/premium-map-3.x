@@ -221,6 +221,13 @@ test('public front script does not print exception text', function () {
     assertNotContains('echo $e->getMessage()', $src);
 });
 
+test('an empty or invalid collmex email clears the stored address', function () {
+    assertSame('a@b.de', ShopEmail::stored('a@b.de'));
+    assertSame('a@b.de', ShopEmail::stored(' a@b.de, c@d.de '));
+    assertSame('', ShopEmail::stored(''));
+    assertSame('', ShopEmail::stored('not-an-email'));
+});
+
 test('a shop leaves the map once when it is no longer in group 124', function () {
     $kept = SyncCleanup::keptIds(array(
         array('address_id' => 5, 'collmex_address_groups' => '8,124'),
