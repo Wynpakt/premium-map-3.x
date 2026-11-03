@@ -18,6 +18,20 @@ class MarkerQuery
         return array('cola', 'bier', 'frohlunder', 'muntermate');
     }
 
+    /**
+     * 16: former customers. 93: asked to stay off the map.
+     */
+    public static function isHidden($groups)
+    {
+        foreach (explode(',', (string) $groups) as $id) {
+            if ($id === '16' || $id === '93') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static function sql(array $countries, array $products)
     {
         $sql = 'SELECT item.id, item.lat, item.lng, ho.offertype_id AS offertype, item.collmex_address_groups'
