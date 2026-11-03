@@ -25,8 +25,7 @@ class BaseTask extends \Phalcon\Cli\Task
      * Locate an address via the local Photon instance for that country.
      *
      * @param string $countryCode DE, AT or CH
-     * @return array{lat:string,lng:string,street:string,postcode:string,city:string,country:string}|null|false
-     *         Coords, null if not found or unreachable, false if the server asked us to back off
+     * @return array|null|false coords, null if Photon found nothing, false if it did not answer
      */
     public function getCoordinates($street, $zip, $city, $countryCode){
         $urls = array();
@@ -39,7 +38,8 @@ class BaseTask extends \Phalcon\Cli\Task
         $base = PhotonGeocoder::baseUrl($urls, $countryCode);
         if ($base === null) {
             echo PHP_EOL . 'Kein Photon-Endpunkt für ' . $countryCode . PHP_EOL;
-            return null;
+            // shortcut: no endpoint stops this run, same as an outage
+            return false;
         }
 
         $url = PhotonGeocoder::endpoint($base, $street, $zip, $city, $countryCode);
@@ -60,14 +60,9 @@ class BaseTask extends \Phalcon\Cli\Task
 
         if ($status === 429) {
             echo PHP_EOL . 'Photon 429 für ' . $countryCode . PHP_EOL;
-            return false;
         }
 
-        if ($response === false || $status >= 400) {
-            return null;
-        }
-
-        return PhotonGeocoder::parse(json_decode($response, true));
+        return PhotonGeocoder::fromHttp($response, $status);
     }
 
     public function error($msg, $exit = true) {

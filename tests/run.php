@@ -227,6 +227,13 @@ test('an empty collmex fetch is a failed sync', function () {
     assertSame(false, SyncRun::emptyFetch(array(array('address_id' => '1'))));
 });
 
+test('a photon outage does not count as a miss', function () {
+    assertSame(false, PhotonGeocoder::fromHttp(false, 0));
+    assertSame(false, PhotonGeocoder::fromHttp('down', 500));
+    assertSame(false, PhotonGeocoder::fromHttp('slow', 429));
+    assertSame(null, PhotonGeocoder::fromHttp('{"features":[]}', 200));
+});
+
 test('street compare folds straße and ignores punctuation', function () {
     assertSame(false, StreetCompare::differs('Torstraße 1', 'Torstr. 1'));
     assertSame(true, StreetCompare::differs('Torstraße 1', 'Linienstraße 1'));

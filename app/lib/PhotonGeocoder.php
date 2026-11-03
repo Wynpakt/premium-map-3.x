@@ -99,4 +99,19 @@ class PhotonGeocoder
             'country' => isset($props['country']) ? (string) $props['country'] : '',
         );
     }
+
+    /**
+     * false means Photon did not answer, so the try must not be counted.
+     * null means Photon answered and found nothing.
+     *
+     * @return array|null|false
+     */
+    public static function fromHttp($body, $status)
+    {
+        if ($body === false || (int) $status === 429 || (int) $status >= 400) {
+            return false;
+        }
+
+        return self::parse(json_decode((string) $body, true));
+    }
 }
