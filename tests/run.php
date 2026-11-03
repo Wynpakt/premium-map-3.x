@@ -221,6 +221,16 @@ test('public front script does not print exception text', function () {
     assertNotContains('echo $e->getMessage()', $src);
 });
 
+test('a shop leaves the map once when it is no longer in group 124', function () {
+    $kept = SyncCleanup::keptIds(array(
+        array('address_id' => 5, 'collmex_address_groups' => '8,124'),
+        array('address_id' => 5, 'collmex_address_groups' => '8'),
+        array('address_id' => 6, 'collmex_address_groups' => '8'),
+    ));
+    assertSame(array('5' => true), $kept);
+    assertSame(array(), SyncCleanup::keptIds(false));
+});
+
 test('an empty collmex fetch is a failed sync', function () {
     assertSame(true, SyncRun::emptyFetch(false));
     assertSame(true, SyncRun::emptyFetch(array()));
