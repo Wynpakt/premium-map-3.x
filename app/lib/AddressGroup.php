@@ -3,8 +3,8 @@
 /**
  * Collmex address-group ids the internal map can filter on.
  *
- * Potenziell, privat, Gastro and Großhändler have no number yet (LAND-15).
- * Until then, "aktuell" is every address that is not group 16.
+ * The names come from the address_group table. These three ids stay special
+ * for status and visibility. "Aktuell" is every address that is not group 16.
  */
 class AddressGroup
 {
@@ -58,5 +58,52 @@ class AddressGroup
         }
 
         return $out;
+    }
+
+    /**
+     * Filter options from imported Collmex rows. Id 0 and a blank name are
+     * not groups. The list is ordered by the German name.
+     *
+     * @param array<int, array> $rows
+     * @return array<int, array{id: string, name: string}>
+     */
+    public static function options(array $rows)
+    {
+        $byId = array();
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $id = isset($row['id']) ? (string) $row['id'] : '';
+            $name = isset($row['name']) ? trim((string) $row['name']) : '';
+            if (!preg_match('/^[1-9][0-9]*$/', $id) || $name === '') {
+                continue;
+            }
+            $byId[$id] = array(
+                'id' => $id,
+                'name' => $name,
+            );
+        }
+        $options = array_values($byId);
+        usort($options, function ($left, $right) {
+            return strcmp(self::sortKey($left['name']), self::sortKey($right['name']));
+        });
+
+        return $options;
+    }
+
+    private static function sortKey($name)
+    {
+        $folded = strtr((string) $name, array(
+            'ä' => 'ae',
+            'ö' => 'oe',
+            'ü' => 'ue',
+            'ß' => 'ss',
+            'Ä' => 'ae',
+            'Ö' => 'oe',
+            'Ü' => 'ue',
+        ));
+
+        return strtolower($folded);
     }
 }

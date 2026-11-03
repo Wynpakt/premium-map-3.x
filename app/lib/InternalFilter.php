@@ -22,9 +22,10 @@ class InternalFilter
     );
 
     /**
+     * @param array<int, string> $groupIds imported Collmex group ids
      * @return string|null null when the request has no type list
      */
-    public static function sql(array $query)
+    public static function sql(array $query, array $groupIds = array())
     {
         if (!isset($query['types']) || !is_array($query['types'])) {
             return null;
@@ -40,6 +41,7 @@ class InternalFilter
         $sql .= self::andWhere(self::statusSql($query));
         $sql .= self::andWhere(self::visibilitySql($query));
         $sql .= self::andWhere(self::stateSql($query));
+        $sql .= self::andWhere(self::groupSql($query, $groupIds));
 
         return $sql;
     }
@@ -181,6 +183,40 @@ class InternalFilter
         }
 
         return Bundesland::sql(self::picked($query, 'states', Bundesland::codes()));
+    }
+
+    /**
+     * A missing groups key, or every imported id, leaves the book unfiltered.
+     * A partial list matches an address that carries any of those ids.
+     *
+     * @param array<int, string> $groupIds
+     */
+    private static function groupSql(array $query, array $groupIds)
+    {
+        if (!isset($query['groups'])) {
+            return '';
+        }
+        $allowed = array();
+        foreach ($groupIds as $id) {
+            $id = (string) $id;
+            if (preg_match('/^[1-9][0-9]*$/', $id)) {
+                $allowed[$id] = $id;
+            }
+        }
+        $catalog = array_values($allowed);
+        $picked = self::picked($query, 'groups', $catalog);
+        if (count($catalog) > 0 && self::covers($picked, $catalog)) {
+            return '';
+        }
+        if (count($picked) === 0) {
+            return '1=0';
+        }
+        $parts = array();
+        foreach ($picked as $id) {
+            $parts[] = "FIND_IN_SET('" . $id . "', item.collmex_address_groups)";
+        }
+
+        return implode(' OR ', $parts);
     }
 
     private static function picked(array $query, $key, array $allowed)
