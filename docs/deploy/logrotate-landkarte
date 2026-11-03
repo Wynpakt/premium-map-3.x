@@ -1,0 +1,23 @@
+/var/log/landkarte/sync.log
+/var/log/landkarte/geo.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su www-data www-data
+}
+
+/var/log/landkarte/photon-refresh.log
+/var/log/landkarte/photon-de-fetch.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su root root
+}
