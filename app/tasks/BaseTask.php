@@ -83,7 +83,6 @@ class BaseTask extends \Phalcon\Cli\Task
         cURL_setopt($this->collmex_curl, CURLOPT_POST, 1);
         cURL_setopt($this->collmex_curl, CURLOPT_POSTFIELDS, "LOGIN;".$this->config->collmex->user.";".$this->config->collmex->password."\n".$param."\n");
         cURL_setopt($this->collmex_curl, CURLOPT_HTTPHEADER, Array("Content-Type: text/csv"));
-        cURL_setopt($this->collmex_curl, CURLOPT_SSL_VERIFYPEER, FALSE);
         cURL_setopt($this->collmex_curl, CURLOPT_RETURNTRANSFER, 1);
         $csv = curl_exec($this->collmex_curl);
 
