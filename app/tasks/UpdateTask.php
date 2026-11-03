@@ -208,18 +208,7 @@ class UpdateTask extends BaseTask
                     /*
                      * Clean Email Field
                      */
-                    $email = '';
-
-                    if (strpos($data['email'], ',') !== false) {
-                        $emails = explode(',', $data['email']);
-                        $email = trim($emails[0]);
-                    } else {
-                        $email = trim($data['email']);
-                    }
-
-                    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                        $item->setEmail($email);
-                    }
+                    $item->setEmail(ShopEmail::stored(isset($data['email']) ? $data['email'] : ''));
 
                     // Collmex mixes private numbers into this field. Keep the column, store nothing.
                     $item->setPhone('');
