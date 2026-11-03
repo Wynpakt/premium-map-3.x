@@ -16,6 +16,11 @@
         'action' => 'apiList',
     ]);
 
+    $router->addGet('/item/groups', [
+        'controller' => 'item',
+        'action' => 'apiGroups',
+    ]);
+
     /*
      * API Call to get all items
      */

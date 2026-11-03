@@ -641,7 +641,54 @@ function shopDetailFixture()
 test('item list rejects an internal filter that is not an array', function () {
     assertSame(true, ListQuery::rejected(array('status' => 'ehemalig')));
     assertSame(true, ListQuery::rejected(array('states' => 'BE')));
+    assertSame(true, ListQuery::rejected(array('groups' => '8')));
     assertSame(false, ListQuery::rejected(array('status' => array('aktuell'), 'states' => array('BE'))));
+    assertSame(false, ListQuery::rejected(array('groups' => array('8'))));
+});
+
+test('address group options keep the collmex names and drop an empty id', function () {
+    $options = AddressGroup::options(array(
+        array('id' => 8, 'name' => 'Gastronom | Laden | Einzelhandel'),
+        array('id' => '0', 'name' => 'leer'),
+        array('id' => 4, 'name' => 'Interessent'),
+        array('id' => 139, 'name' => ''),
+        array('id' => 9, 'name' => 'Händler'),
+    ));
+    assertSame(array(
+        array('id' => '8', 'name' => 'Gastronom | Laden | Einzelhandel'),
+        array('id' => '9', 'name' => 'Händler'),
+        array('id' => '4', 'name' => 'Interessent'),
+    ), $options);
+});
+
+test('address group filter matches imported ids and a full selection adds nothing', function () {
+    $catalog = array('4', '8', '139');
+    $open = InternalFilter::sql(array(
+        'types' => array('laeden'),
+    ), $catalog);
+    assertNotContains('FIND_IN_SET', $open);
+
+    $all = InternalFilter::sql(array(
+        'types' => array('laeden'),
+        'groups' => array('4', '8', '139', '0', "8' OR 1=1"),
+    ), $catalog);
+    assertNotContains('FIND_IN_SET', $all);
+    assertNotContains('OR 1=1', $all);
+    assertNotContains('1=0', $all);
+
+    $one = InternalFilter::sql(array(
+        'types' => array('laeden'),
+        'groups' => array('139'),
+    ), $catalog);
+    assertContains("FIND_IN_SET('139', item.collmex_address_groups)", $one);
+    assertNotContains("FIND_IN_SET('4'", $one);
+
+    $none = InternalFilter::sql(array(
+        'types' => array('laeden'),
+        'groups' => array(''),
+    ), $catalog);
+    assertContains('1=0', $none);
+    assertNotContains('FIND_IN_SET', $none);
 });
 
 finished();

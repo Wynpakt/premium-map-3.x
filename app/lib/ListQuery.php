@@ -8,7 +8,7 @@ class ListQuery
 {
     public static function rejected($query)
     {
-        foreach (array('types', 'countries', 'products', 'status', 'visibility', 'states') as $key) {
+        foreach (array('types', 'countries', 'products', 'status', 'visibility', 'states', 'groups') as $key) {
             if (isset($query[$key]) && !is_array($query[$key])) {
                 return true;
             }

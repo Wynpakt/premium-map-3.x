@@ -196,7 +196,8 @@ class ItemController extends ControllerBase
      */
     private function internalList()
     {
-        $sql = InternalFilter::sql($_GET);
+        $catalog = isset($_GET['groups']) ? $this->addressGroupIds() : array();
+        $sql = InternalFilter::sql($_GET, $catalog);
         if ($sql === null) {
             return $this->jsonResponse([]);
         }
@@ -222,6 +223,52 @@ class ItemController extends ControllerBase
         }
 
         return $this->jsonResponse(array_values($out));
+    }
+
+    /**
+     * Imported Collmex group names for the internal filter.
+     * The public map gets an empty list.
+     */
+    public function apiGroupsAction()
+    {
+        if (!MapAudience::isInternal($this->audience())) {
+            return $this->jsonResponse(array());
+        }
+
+        return $this->jsonResponse(AddressGroup::options($this->addressGroupRows()));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function addressGroupIds()
+    {
+        $ids = array();
+        foreach ($this->addressGroupRows() as $row) {
+            $ids[] = $row['id'];
+        }
+
+        return $ids;
+    }
+
+    /**
+     * @return array<int, array{id: string, name: string}>
+     */
+    private function addressGroupRows()
+    {
+        $rows = array();
+        $groups = CollmexGroup::find();
+        if (!$groups) {
+            return $rows;
+        }
+        foreach ($groups as $group) {
+            $rows[] = array(
+                'id' => (string) $group->getCollmexId(),
+                'name' => (string) $group->getName(),
+            );
+        }
+
+        return $rows;
     }
 
     private function audience()
