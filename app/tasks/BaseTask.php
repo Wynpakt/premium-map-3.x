@@ -73,7 +73,7 @@ class BaseTask extends \Phalcon\Cli\Task
     public function error($msg, $exit = true) {
         echo PHP_EOL . 'Fehler: ' . $msg . PHP_EOL;
         if($exit) {
-            exit(0);
+            exit(1);
         }
     }
 

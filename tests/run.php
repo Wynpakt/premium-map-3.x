@@ -221,6 +221,12 @@ test('public front script does not print exception text', function () {
     assertNotContains('echo $e->getMessage()', $src);
 });
 
+test('an empty collmex fetch is a failed sync', function () {
+    assertSame(true, SyncRun::emptyFetch(false));
+    assertSame(true, SyncRun::emptyFetch(array()));
+    assertSame(false, SyncRun::emptyFetch(array(array('address_id' => '1'))));
+});
+
 test('street compare folds straße and ignores punctuation', function () {
     assertSame(false, StreetCompare::differs('Torstraße 1', 'Torstr. 1'));
     assertSame(true, StreetCompare::differs('Torstraße 1', 'Linienstraße 1'));
