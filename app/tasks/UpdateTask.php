@@ -382,6 +382,99 @@ class UpdateTask extends BaseTask
     }
 
     /**
+     * Move pins whose reverse postcode is not the Collmex PLZ, when Photon
+     * can place that PLZ. Without "apply" this only prints the plan.
+     */
+    public function geoRepairAction($mode = '')
+    {
+        if (PhotonIndexRefresh::isRefreshing()) {
+            echo 'Photon-Index wird ausgetauscht. Dieser Lauf macht kein Geocoding.' . PHP_EOL;
+            return;
+        }
+
+        $apply = ($mode === 'apply');
+        $moved = 0;
+        $kept = 0;
+        $unresolved = 0;
+        $skipped = 0;
+
+        foreach (Item::find() as $item) {
+            $street = trim((string) $item->getStreet());
+            $zip = trim((string) $item->getZip());
+            $missing = ((int) $item->lat == 0) || ((int) $item->lng == 0);
+            $speaker = count($item->offertypes) == 1
+                && (int) $item->offertypes[0]->id === (int) $this->offertype_sprecher->id;
+            if ($missing || $street === '' || $zip === '' || $speaker) {
+                $skipped++;
+                continue;
+            }
+
+            $base = $this->photonBase($item->getCountry());
+            if ($base === null) {
+                echo 'Kein Photon-Endpunkt für ' . $item->getCountry() . PHP_EOL;
+                return;
+            }
+
+            $reversed = $this->photonFeatures(
+                PhotonGeocoder::reverseEndpoint($base, $item->getLat(), $item->getLng())
+            );
+            if ($reversed === false) {
+                echo PHP_EOL . 'Abbruch: Photon nicht erreichbar.' . PHP_EOL;
+                return;
+            }
+
+            $pinZip = '';
+            if (count($reversed) > 0) {
+                $pinZip = PhotonGeocoder::normalizePostcode($reversed[0]['postcode']);
+            }
+            if ($pinZip !== '' && $pinZip === PhotonGeocoder::normalizePostcode($zip)) {
+                $kept++;
+                continue;
+            }
+
+            $geo = $this->getCoordinates($street, $zip, $item->getCity(), $item->getCountry());
+            if ($geo === false) {
+                echo PHP_EOL . 'Abbruch: Photon nicht erreichbar.' . PHP_EOL;
+                return;
+            }
+            if (!is_array($geo) || PhotonGeocoder::normalizePostcode($geo['postcode']) !== PhotonGeocoder::normalizePostcode($zip)) {
+                $unresolved++;
+                echo 'offen  #' . $item->getCollmexAddressId()
+                    . ' ' . $item->getName()
+                    . ' ' . $street . ', ' . $zip . ' ' . $item->getCity()
+                    . ' pin=' . $pinZip . PHP_EOL;
+                continue;
+            }
+
+            $meters = PhotonGeocoder::meters($item->getLat(), $item->getLng(), $geo['lat'], $geo['lng']);
+            echo ($apply ? 'verschoben' : 'würde verschieben')
+                . '  #' . $item->getCollmexAddressId()
+                . ' ' . $item->getName()
+                . ' ' . $street . ', ' . $zip . ' ' . $item->getCity()
+                . ' pin=' . $pinZip
+                . ' -> ' . $geo['postcode'] . ' ' . $geo['street']
+                . ' (' . $meters . ' m)' . PHP_EOL;
+            $moved++;
+            if ($apply) {
+                $item->setLat($geo['lat']);
+                $item->setLng($geo['lng']);
+                $item->setGeocodePending(0);
+                if (!$item->save()) {
+                    echo 'Speichern fehlgeschlagen #' . $item->getCollmexAddressId() . PHP_EOL;
+                }
+            }
+        }
+
+        echo $moved . ($apply ? ' verschoben, ' : ' zu verschieben, ')
+            . $kept . ' Postleitzahl stimmt, '
+            . $unresolved . ' ohne passenden Treffer, '
+            . $skipped . ' übersprungen' . PHP_EOL;
+        if (!$apply) {
+            echo 'Nur Anzeige. Schreiben: php app/cli.php update geo-repair apply' . PHP_EOL;
+        }
+    }
+
+    /**
      * Print Collmex addresses that share a normalized street+zip+city, or the same pin.
      * Does not delete or hide anything.
      */

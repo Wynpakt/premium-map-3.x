@@ -5,12 +5,11 @@ class BaseTask extends \Phalcon\Cli\Task
     public $collmex_curl;
 
     /**
-     * Locate an address via the local Photon instance for that country.
-     *
      * @param string $countryCode DE, AT or CH
-     * @return array|null|false coords, null if Photon found nothing, false if it did not answer
+     * @return string|null
      */
-    public function getCoordinates($street, $zip, $city, $countryCode){
+    public function photonBase($countryCode)
+    {
         $urls = array();
         if (isset($this->config->photon)) {
             $urls = $this->config->photon->toArray();
@@ -18,14 +17,15 @@ class BaseTask extends \Phalcon\Cli\Task
         if (isset($urls['url']) && $urls['url'] !== '' && empty($urls['default'])) {
             $urls['default'] = $urls['url'];
         }
-        $base = PhotonGeocoder::baseUrl($urls, $countryCode);
-        if ($base === null) {
-            echo PHP_EOL . 'Kein Photon-Endpunkt für ' . $countryCode . PHP_EOL;
-            // shortcut: no endpoint stops this run, same as an outage
-            return false;
-        }
 
-        $url = PhotonGeocoder::endpoint($base, $street, $zip, $city, $countryCode);
+        return PhotonGeocoder::baseUrl($urls, $countryCode);
+    }
+
+    /**
+     * @return array|false parsed features, false if Photon did not answer
+     */
+    public function photonFeatures($url)
+    {
         $context = stream_context_create([
             'http' => [
                 'method' => 'GET',
@@ -37,15 +37,71 @@ class BaseTask extends \Phalcon\Cli\Task
 
         $response = @file_get_contents($url, false, $context);
         $status = 0;
-        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+        $headers = function_exists('http_get_last_response_headers')
+            ? (http_get_last_response_headers() ?: array())
+            : array();
+        if (isset($headers[0]) && preg_match('/\s(\d{3})\s/', $headers[0], $m)) {
             $status = (int) $m[1];
         }
-
         if ($status === 429) {
-            echo PHP_EOL . 'Photon 429 für ' . $countryCode . PHP_EOL;
+            echo PHP_EOL . 'Photon 429' . PHP_EOL;
         }
 
-        return PhotonGeocoder::fromHttp($response, $status);
+        return PhotonGeocoder::featuresFromHttp($response, $status);
+    }
+
+    /**
+     * Locate an address via the local Photon instance for that country.
+     * A requested PLZ is searched around that postcode, and a hit in another
+     * postcode is refused.
+     *
+     * @param string $countryCode DE, AT or CH
+     * @return array|null|false coords, null if Photon found nothing, false if it did not answer
+     */
+    public function getCoordinates($street, $zip, $city, $countryCode){
+        $base = $this->photonBase($countryCode);
+        if ($base === null) {
+            echo PHP_EOL . 'Kein Photon-Endpunkt für ' . $countryCode . PHP_EOL;
+            // shortcut: no endpoint stops this run, same as an outage
+            return false;
+        }
+
+        $zip = trim((string) $zip);
+        if ($zip !== '') {
+            $anchorFeatures = $this->photonFeatures(
+                PhotonGeocoder::endpoint($base, '', $zip, $city, $countryCode)
+            );
+            if ($anchorFeatures === false) {
+                return false;
+            }
+            $anchor = PhotonGeocoder::anchor($anchorFeatures, $zip);
+            if ($anchor) {
+                foreach (PhotonGeocoder::bboxRadii() as $radius) {
+                    $features = $this->photonFeatures(PhotonGeocoder::endpoint(
+                        $base,
+                        $street,
+                        '',
+                        $city,
+                        $countryCode,
+                        PhotonGeocoder::bbox($anchor['lat'], $anchor['lng'], $radius)
+                    ));
+                    if ($features === false) {
+                        return false;
+                    }
+                    $chosen = PhotonGeocoder::choose($features, $street, $zip);
+                    if ($chosen) {
+                        return $chosen;
+                    }
+                }
+            }
+        }
+
+        $features = $this->photonFeatures(PhotonGeocoder::endpoint($base, $street, $zip, $city, $countryCode));
+        if ($features === false) {
+            return false;
+        }
+
+        return PhotonGeocoder::choose($features, $street, $zip);
     }
 
     public function error($msg, $exit = true) {
