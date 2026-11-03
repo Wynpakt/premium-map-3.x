@@ -238,6 +238,14 @@ test('duplicate finder groups the same address and the same pin', function () {
     assertSame(2, count($groups['point']['52.5,13.4']));
 });
 
+test('item list rejects a filter that is not an array', function () {
+    assertSame(true, ListQuery::rejected(array('types' => 'laeden')));
+    assertSame(true, ListQuery::rejected(array('types' => array('laeden'), 'countries' => 'DE')));
+    assertSame(true, ListQuery::rejected(array('products' => 'cola')));
+    assertSame(false, ListQuery::rejected(array('types' => array('laeden'), 'countries' => array('DE'))));
+    assertSame(false, ListQuery::rejected(array()));
+});
+
 test('public router does not install phalcon default routes', function () {
     $src = file_get_contents(dirname(__DIR__) . '/app/config/router.php');
     assertContains('Router(false)', $src);

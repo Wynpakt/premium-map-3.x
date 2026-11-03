@@ -109,6 +109,10 @@ class ItemController extends ControllerBase
      */
     public function apiListAction() {
 
+        if (ListQuery::rejected($_GET)) {
+            return $this->jsonResponse([]);
+        }
+
         // defualt list all if no type defined
         $options = [1=>true,2=>true,3=>true,4=>true];
 
