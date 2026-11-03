@@ -1,17 +1,7 @@
 <?php
- 
-use Phalcon\Mvc\Model\Criteria;
-use Phalcon\Paginator\Adapter\Model as Paginator;
 
 class ItemController extends ControllerBase
 {
-
-    /**
-     * Index action
-     */
-    public function indexAction() {
-        $this->persistent->parameters = null;
-    }
 
     public function getAllAction() {
         $items = Item::find();
@@ -241,92 +231,5 @@ class ItemController extends ControllerBase
         }
         
         return $this->jsonResponseError();
-    }
-    
-    /**
-     * Searches for item
-     */
-    public function searchAction()
-    {
-
-        $numberPage = 1;
-        if ($this->request->isPost()) {
-            $query = Criteria::fromInput($this->di, "Item", $_POST);
-            $this->persistent->parameters = $query->getParams();
-        } else {
-            $numberPage = $this->request->getQuery("page", "int");
-        }
-
-        $parameters = $this->persistent->parameters;
-        if (!is_array($parameters)) {
-            $parameters = array();
-        }
-        $parameters["order"] = "id";
-
-        $item = Item::find($parameters);
-        if (count($item) == 0) {
-            $this->flash->notice("The search did not find any item");
-
-            return $this->dispatcher->forward(array(
-                "controller" => "item",
-                "action" => "index"
-            ));
-        }
-
-        $paginator = new Paginator(array(
-            "model" => "Item",
-            "parameters" => $parameters,
-            "limit"=> 10,
-            "page" => $numberPage
-        ));
-
-        $this->view->page = $paginator->paginate();
-    }
-
-    /**
-     * Displays the creation form
-     */
-    public function newAction()
-    {
-
-    }
-
-    /**
-     * Edits a item
-     *
-     * @param string $id
-     */
-    public function editAction($id)
-    {
-
-        if (!$this->request->isPost()) {
-
-            $item = Item::findFirstByid($id);
-            if (!$item) {
-                $this->flash->error("item was not found");
-
-                return $this->dispatcher->forward(array(
-                    "controller" => "item",
-                    "action" => "index"
-                ));
-            }
-
-            $this->view->id = $item->id;
-
-            $this->tag->setDefault("id", $item->id);
-            $this->tag->setDefault("collmex_customer_id", $item->collmex_customer_id);
-            $this->tag->setDefault("name", $item->name);
-            $this->tag->setDefault("street", $item->street);
-            $this->tag->setDefault("street_number", $item->street_number);
-            $this->tag->setDefault("zip", $item->zip);
-            $this->tag->setDefault("city", $item->city);
-            $this->tag->setDefault("country", $item->country);
-            $this->tag->setDefault("lat", $item->lat);
-            $this->tag->setDefault("lng", $item->lng);
-            $this->tag->setDefault("web", $item->web);
-            $this->tag->setDefault("email", $item->email);
-            $this->tag->setDefault("location_checked", $item->location_checked);
-            
-        }
     }
 }

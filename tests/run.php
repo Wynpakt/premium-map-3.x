@@ -201,6 +201,11 @@ test('duplicate finder groups the same address and the same pin', function () {
     assertSame(2, count($groups['point']['52.5,13.4']));
 });
 
+test('public router does not install phalcon default routes', function () {
+    $src = file_get_contents(dirname(__DIR__) . '/app/config/router.php');
+    assertContains('Router(false)', $src);
+});
+
 test('street compare folds straße and ignores punctuation', function () {
     assertSame(false, StreetCompare::differs('Torstraße 1', 'Torstr. 1'));
     assertSame(true, StreetCompare::differs('Torstraße 1', 'Linienstraße 1'));
