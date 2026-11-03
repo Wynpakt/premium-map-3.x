@@ -45,11 +45,3 @@
         'controller' => 'feedback',
         'action' => 'report'
     ]);
-
-    /*
-     * Not found 404 route
-     */
-    $router->notFound([
-        'controller' => 'index',
-        'action' => 'route404'
-    ]);
