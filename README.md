@@ -182,13 +182,14 @@ The OpenStreetMap data inside Photon is a dated GraphHopper dump, not the live p
 
 #### Checking whether an address can be located
 
-With Photon running, the same query the sync sends is:
+Photon 0.5 does not index the postcode, so `q=STREET ZIP CITY` can rank another street of the same name first. `update geo` looks up the postcode, searches the street inside a box around that point, and keeps a hit only when its `postcode` matches. Speakers are still located by city only.
 
 ```
-http://127.0.0.1:2322/api?limit=1&lang=de&q=STREET+ZIP+CITY+Germany
+http://127.0.0.1:2322/api?limit=5&lang=de&q=ZIP+CITY+Germany
+http://127.0.0.1:2322/api?limit=50&lang=de&q=STREET+CITY+Germany&bbox=minLon,minLat,maxLon,maxLat
 ```
 
-Use port 2323 and `Austria` for AT, port 2324 and `Switzerland` for CH. For speakers, omit street and zip. A hit has `features[0].geometry.coordinates` as `[lon, lat]`. An empty `features` array is why the item is missing. Typically that is a typo or a missing house number, zip or city; correcting it in Collmex resets the retry counter on the next sync and sets `geocode_pending`.
+Use port 2323 and `Austria` for AT, port 2324 and `Switzerland` for CH. A hit has `geometry.coordinates` as `[lon, lat]`. No hit whose postcode equals the Collmex PLZ is why a new item is missing. Typically that is a typo or a missing house number, zip or city; correcting it in Collmex resets the retry counter on the next sync and sets `geocode_pending`. Pins that were stored before this check are not moved by `update geo`. `php app/cli.php update geo-repair` lists them, and `php app/cli.php update geo-repair apply` writes the corrected coordinates.
 
 If Photon finds the address but the map still does not, check `lat`, `lng`, `geolocate_count` and `geocode_pending` on the `item` row.
 

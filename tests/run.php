@@ -57,8 +57,18 @@ test('photon endpoint is country specific', function () {
     assertSame('http://photon-at:2322', PhotonGeocoder::baseUrl($urls, 'at'));
     assertSame(null, PhotonGeocoder::baseUrl($urls, 'CH'));
     $endpoint = PhotonGeocoder::endpoint(PhotonGeocoder::baseUrl($urls, 'DE'), 'A 1', '10115', 'Berlin', 'DE');
-    assertContains('/api?limit=1&lang=de&q=', $endpoint);
+    assertContains('/api?limit=50&lang=de&q=', $endpoint);
     assertContains('Germany', rawurldecode($endpoint));
+    $boxed = PhotonGeocoder::endpoint(
+        PhotonGeocoder::baseUrl($urls, 'DE'),
+        'Ritterstraße 9',
+        '',
+        'Berlin',
+        'DE',
+        PhotonGeocoder::bbox(52.50249, 13.40111, 0.04)
+    );
+    assertContains('&bbox=13.36111,52.46249,13.44111,52.54249', $boxed);
+    assertNotContains('10969', rawurldecode($boxed));
 });
 
 test('photon refresh lock is a file on disk', function () {
@@ -92,7 +102,56 @@ test('photon parse reads lon lat order from geojson', function () {
     assertSame('52.5', $parsed['lat']);
     assertSame('13.4', $parsed['lng']);
     assertSame('Torstraße 1', $parsed['street']);
+    assertSame('1', $parsed['housenumber']);
     assertSame(null, PhotonGeocoder::parse(array('features' => array())));
+});
+
+test('a hit in another postcode is refused, a house-number range in the right one is kept', function () {
+    $lichterfelde = array(
+        'lat' => '52.4327594',
+        'lng' => '13.3201403',
+        'street' => 'Ritterstraße 9',
+        'housenumber' => '9',
+        'postcode' => '12207',
+        'city' => 'Berlin',
+        'country' => 'Germany',
+        'name' => '',
+    );
+    $kreuzberg = array(
+        'lat' => '52.5013605',
+        'lng' => '13.4119760',
+        'street' => 'Ritterstraße 9-10',
+        'housenumber' => '9-10',
+        'postcode' => '10969',
+        'city' => 'Berlin',
+        'country' => 'Germany',
+        'name' => 'Pelikan-Haus',
+    );
+    $otherStreet = array(
+        'lat' => '52.49',
+        'lng' => '13.40',
+        'street' => 'Bergmannstraße 9',
+        'housenumber' => '9',
+        'postcode' => '10969',
+        'city' => 'Berlin',
+        'country' => 'Germany',
+        'name' => '',
+    );
+
+    $chosen = PhotonGeocoder::choose(array($lichterfelde, $otherStreet, $kreuzberg), 'Ritterstraße 9', 'D-10969');
+    assertSame('52.5013605', $chosen['lat']);
+    assertSame(null, PhotonGeocoder::choose(array($lichterfelde), 'Ritterstraße 9', '10969'));
+    assertSame(null, PhotonGeocoder::choose(array($otherStreet), 'Ritterstraße 9', '10969'));
+    assertSame('52.4327594', PhotonGeocoder::choose(array($lichterfelde, $kreuzberg), 'Ritterstraße 9', '')['lat']);
+    assertSame(true, PhotonGeocoder::meters('52.4327594', '13.3201403', '52.5013605', '13.4119760') > 8000);
+});
+
+test('postcode anchor prefers the area named like the zip', function () {
+    $house = array('postcode' => '10969', 'name' => 'Berlinische Galerie', 'lat' => '52.50', 'lng' => '13.39');
+    $area = array('postcode' => '10969', 'name' => '10969', 'lat' => '52.50249', 'lng' => '13.40111');
+    $anchor = PhotonGeocoder::anchor(array($house, $area), '10969');
+    assertSame('13.40111', $anchor['lng']);
+    assertSame(null, PhotonGeocoder::anchor(array($house), '12207'));
 });
 
 test('collmex row drops the phone at index 15 and keeps the fields the sync stores', function () {
