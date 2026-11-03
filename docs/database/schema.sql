@@ -35,7 +35,7 @@ CREATE TABLE `item` (
   `web` varchar(120) DEFAULT NULL,
   `email` varchar(120) DEFAULT NULL,
   `phone` varchar(60) DEFAULT NULL, -- unused; Collmex phone can be private and must stay empty
-  `collmex_address_groups` varchar(120) NOT NULL,
+  `collmex_address_groups` varchar(512) NOT NULL,
   `location_checked` tinyint(1) unsigned DEFAULT '0',
   `geolocate_count` int(10) unsigned DEFAULT '0',
   `geocode_pending` tinyint(1) unsigned NOT NULL DEFAULT '0',

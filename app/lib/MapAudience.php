@@ -56,6 +56,14 @@ class MapAudience
         return self::isInternal($audience);
     }
 
+    /**
+     * The public list, search and export only keep rows that have a role and a product.
+     */
+    public static function requiresOfferAndProduct($audience)
+    {
+        return !self::isInternal($audience);
+    }
+
     public static function storesPhone($audience)
     {
         return self::isInternal($audience);
