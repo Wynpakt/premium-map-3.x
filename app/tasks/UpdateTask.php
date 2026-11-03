@@ -139,12 +139,16 @@ class UpdateTask extends BaseTask
         /*
          * get all customers from collmex
          */
-        if($records = $this->collmexAddressGet()) {
+        $records = $this->collmexAddressGet();
+        if (SyncRun::emptyFetch($records)) {
+            $this->error('Collmex lieferte keine Adressen.');
+        }
 
-            $new_records = 0;
-            $updated_records = 0;
-            $address_changes = 0;
-            $unused_records = 0;
+        $new_records = 0;
+        $updated_records = 0;
+        $address_changes = 0;
+        $unused_records = 0;
+        $failed_saves = 0;
 
             foreach ($records as $record) {
 
@@ -259,7 +263,9 @@ class UpdateTask extends BaseTask
                      * Save all the funny stuff
                      */
                     if (!$item->save()) {
-                        $this->error('could not save item address_id => ' . $data['customer_id']);
+                        $failed_saves++;
+                        echo 'Fehler: could not save item address_id => ' . $data['address_id'] . PHP_EOL;
+                        continue;
                     }
                 }
             }
@@ -273,6 +279,8 @@ class UpdateTask extends BaseTask
             echo $address_changes . ' Address changes' . PHP_EOL;
             echo $unused_records . ' unused Records' . PHP_EOL;
             echo $deletecItems . ' deleted Records' . PHP_EOL;
+        if ($failed_saves > 0) {
+            exit(1);
         }
     }
 
