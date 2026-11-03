@@ -4,10 +4,25 @@
 # already names the newest dated archive.
 #
 # Peak disk for a country is about three times the .tar.bz2 (the archive plus
-# an index that expands to roughly twice that). When that much is free, the
-# new index is built beside the old one and swapped. Otherwise the old index
-# is removed first. On a 50 GB volume that is the Germany path.
+# an index that expands to roughly twice that). The new index is built beside
+# the old one and swapped. If that much is not free, the country is skipped
+# and the installed index keeps serving.
 set -euo pipefail
+
+# True when the new index fits beside the installed one.
+refresh_fits() {
+  local avail="$1" need="$2"
+  [ "$avail" -ge "$need" ]
+}
+
+if [ "${1:-}" = "--self-check" ]; then
+  refresh_fits 10 10
+  if refresh_fits 9 10; then
+    echo "expected a tight disk to skip" >&2
+    exit 1
+  fi
+  exit 0
+fi
 
 PHOTON_ROOT=/var/lib/photon
 FETCH=/opt/photon/fetch-index.sh
@@ -36,6 +51,7 @@ fi
 
 echo $$ > "$LOCK"
 trap 'rm -f "$LOCK"' EXIT
+SKIPPED=0
 
 latest_name() {
   local cc="$1"
@@ -93,33 +109,23 @@ install_index() {
   local dest="${PHOTON_ROOT}/${cc}"
   local stage="${PHOTON_ROOT}/${cc}.new"
   local url="${MIRROR}/${cc}/${file}"
-  local bytes need avail reusable
+  local bytes need avail
   bytes="$(archive_bytes "$url")"
   need=$((bytes * SPACE_FACTOR))
   avail="$(df -B1 --output=avail "$PHOTON_ROOT" | tail -1 | tr -dc '0-9')"
-  reusable=0
-  if [ -d "$dest" ]; then
-    reusable="$(du -sb "$dest" | awk '{print $1}')"
-  fi
 
   echo "${cc}: ${file} ($(numfmt --to=iec "$bytes") archive, need $(numfmt --to=iec "$need") free)"
-  if [ $((avail + reusable)) -lt "$need" ]; then
-    echo "${cc}: not enough disk. free $(numfmt --to=iec "$avail"), reusable $(numfmt --to=iec "$reusable")" >&2
-    exit 1
+  if ! refresh_fits "$avail" "$need"; then
+    echo "${cc}: not enough free space beside the installed index, leaving it" >&2
+    SKIPPED=$((SKIPPED + 1))
+    return 0
   fi
 
-  if [ "$avail" -ge "$need" ]; then
-    rm -rf "$stage"
-    bash "$FETCH" "$cc" "$stage"
-    systemctl stop "photon@${cc}" || true
-    rm -rf "$dest"
-    mv "$stage" "$dest"
-  else
-    echo "${cc}: removing the installed index before the download"
-    systemctl stop "photon@${cc}" || true
-    rm -rf "$dest" "$stage"
-    bash "$FETCH" "$cc" "$dest"
-  fi
+  rm -rf "$stage"
+  bash "$FETCH" "$cc" "$stage"
+  systemctl stop "photon@${cc}" || true
+  rm -rf "$dest"
+  mv "$stage" "$dest"
   chown -R photon:photon "$dest"
   systemctl enable --now "photon@${cc}"
   wait_until_up "$cc"
@@ -141,5 +147,10 @@ for cc in at ch de; do
   fi
   install_index "$cc" "$file"
 done
+
+if [ "$SKIPPED" -gt 0 ]; then
+  echo "Photon refresh left ${SKIPPED} installed index in place" >&2
+  exit 1
+fi
 
 echo "Photon indexes are current"

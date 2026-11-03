@@ -246,6 +246,12 @@ test('item list rejects a filter that is not an array', function () {
     assertSame(false, ListQuery::rejected(array()));
 });
 
+test('photon refresh keeps the installed index when the new one does not fit beside it', function () {
+    $script = dirname(__DIR__) . '/docs/deploy/photon/refresh-indexes.sh';
+    exec('bash ' . escapeshellarg($script) . ' --self-check', $out, $code);
+    assertSame(0, $code);
+});
+
 test('public router does not install phalcon default routes', function () {
     $src = file_get_contents(dirname(__DIR__) . '/app/config/router.php');
     assertContains('Router(false)', $src);
