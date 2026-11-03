@@ -8,6 +8,11 @@ class FeedbackRouter
 {
     const DEFAULT_EMAIL = 'kontakt@premium-kollektiv.de';
 
+    public static function contactsPath()
+    {
+        return dirname(__DIR__) . '/config/feedback.txt';
+    }
+
     public static function parseLines($contents)
     {
         $contacts = array();

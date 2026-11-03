@@ -40,7 +40,7 @@ class FeedbackController extends ControllerBase
                     $from = $_POST['email'];
                 }
 
-                $contacts = FeedbackRouter::parseLines(file_get_contents('../app/config/feedback.txt'));
+                $contacts = FeedbackRouter::parseLines(file_get_contents(FeedbackRouter::contactsPath()));
                 $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
                 $sentTo = $this->mail($contact_email, $subject, $feedback, $from);
@@ -83,7 +83,7 @@ class FeedbackController extends ControllerBase
             return $this->jsonResponseError('Name und Nachricht dürfen nicht leer sein.');
         }
 
-        $contacts = FeedbackRouter::parseLines(file_get_contents('../app/config/feedback.txt'));
+        $contacts = FeedbackRouter::parseLines(file_get_contents(FeedbackRouter::contactsPath()));
         $contact_email = FeedbackRouter::route($contacts, $country, $zip);
 
         $body = $text

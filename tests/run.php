@@ -136,6 +136,12 @@ test('address change keeps the old pin and marks geocoding pending', function ()
     assertSame(0, $same['geocode_pending']);
 });
 
+test('feedback contacts are read from the app config file', function () {
+    $path = FeedbackRouter::contactsPath();
+    assertSame(dirname(__DIR__) . '/app/config/feedback.txt', $path);
+    assertSame(true, is_readable($path));
+});
+
 test('feedback router matches country and zip prefix', function () {
     $contacts = FeedbackRouter::parseLines("DE;10;max@example.test\nAT;1;doerte@example.test\n");
     assertSame('max@example.test', FeedbackRouter::route($contacts, 'DE', '10115'));
