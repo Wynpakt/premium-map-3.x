@@ -30,6 +30,20 @@ if ((int) $exists->fetchColumn() === 0) {
     echo "item.geocode_pending already present\n";
 }
 
+$width = $pdo->prepare(
+    'SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?'
+);
+$width->execute(array($db->dbname, 'item', 'collmex_address_groups'));
+if ((int) $width->fetchColumn() < 512) {
+    $pdo->exec(
+        'ALTER TABLE item MODIFY collmex_address_groups varchar(512) NOT NULL'
+    );
+    echo "widened item.collmex_address_groups\n";
+} else {
+    echo "item.collmex_address_groups already wide enough\n";
+}
+
 if (MapAudience::clearsStoredPhones(MapAudience::fromConfig($config))) {
     $cleared = $pdo->exec(
         "UPDATE item SET phone = '' WHERE phone IS NOT NULL AND phone <> ''"

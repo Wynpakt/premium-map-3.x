@@ -7,7 +7,7 @@ class ItemController extends ControllerBase
         $items = Item::find();
         $cleaned = [];
         foreach($items as $item) {
-            if (MarkerQuery::isHidden($item->getCollmexAddressGroups())) {
+            if ($this->rowIsHidden($item->getCollmexAddressGroups())) {
                 continue;
             }
             $cleaned_item = array();
@@ -16,7 +16,7 @@ class ItemController extends ControllerBase
             foreach ($item->products as $p){
                 $products[] = $p->name;
             }
-            if(count($products) == 0) {
+            if(count($products) == 0 && $this->requiresOfferAndProduct()) {
                 continue;
             }
 
@@ -67,10 +67,11 @@ class ItemController extends ControllerBase
 
         $out = array();
         foreach ($items as $itemRow) {
-            if (MarkerQuery::isHidden($itemRow->getCollmexAddressGroups())) {
+            if ($this->rowIsHidden($itemRow->getCollmexAddressGroups())) {
                 continue;
             }
-            if (count($itemRow->offertypes) == 0 || count($itemRow->products) == 0) {
+            if ($this->requiresOfferAndProduct()
+                && (count($itemRow->offertypes) == 0 || count($itemRow->products) == 0)) {
                 continue;
             }
 
@@ -111,6 +112,10 @@ class ItemController extends ControllerBase
 
         if (ListQuery::rejected($_GET)) {
             return $this->jsonResponse([]);
+        }
+
+        if (MapAudience::isInternal($this->audience())) {
+            return $this->internalList();
         }
 
         // defualt list all if no type defined
@@ -184,6 +189,55 @@ class ItemController extends ControllerBase
         // if no types defined
         return $this->jsonResponse([]);
     }
+
+    /**
+     * Internal pins include addresses without a role or a product, and groups 16 and 93.
+     * A fourth list entry is true when the address is a former customer (group 16).
+     */
+    private function internalList()
+    {
+        $sql = InternalFilter::sql($_GET);
+        if ($sql === null) {
+            return $this->jsonResponse([]);
+        }
+
+        $out = array();
+        foreach (Item::listBySql($sql) as $row) {
+            $id = (int) $row->id;
+            if (!isset($out[$id])) {
+                $out[$id] = array(
+                    $id,
+                    array(floatval($row->lat), floatval($row->lng)),
+                    array(),
+                    AddressGroup::contains($row->getCollmexAddressGroups(), AddressGroup::FORMER),
+                );
+            }
+            if ($row->offertype === null || $row->offertype === '') {
+                continue;
+            }
+            $offerType = (int) $row->offertype;
+            if (!in_array($offerType, $out[$id][2], true)) {
+                $out[$id][2][] = $offerType;
+            }
+        }
+
+        return $this->jsonResponse(array_values($out));
+    }
+
+    private function audience()
+    {
+        return MapAudience::fromConfig($this->config);
+    }
+
+    private function rowIsHidden($groups)
+    {
+        return MarkerQuery::isHiddenFor($this->audience(), $groups);
+    }
+
+    private function requiresOfferAndProduct()
+    {
+        return MapAudience::requiresOfferAndProduct($this->audience());
+    }
     
     /**
      * gets one marker item with details
@@ -194,7 +248,7 @@ class ItemController extends ControllerBase
         
         if($id = (int)$this->dispatcher->getParam('id')) {
             if($item = Item::findFirst($id)) {
-                if (MarkerQuery::isHidden($item->getCollmexAddressGroups())) {
+                if ($this->rowIsHidden($item->getCollmexAddressGroups())) {
                     return $this->jsonResponseError();
                 }
 

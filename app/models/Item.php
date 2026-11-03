@@ -505,6 +505,13 @@ class Item extends \Phalcon\Mvc\Model
         return new Resultset(null,$item,$item->getReadConnection()->query($sql));
     }
 
+    public static function listBySql($sql)
+    {
+        $item = new Item();
+
+        return new Resultset(null, $item, $item->getReadConnection()->query($sql));
+    }
+
     /**
      * Initialize method for model.
      */

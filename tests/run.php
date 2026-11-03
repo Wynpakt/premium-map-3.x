@@ -398,4 +398,97 @@ test('street compare folds straße and ignores punctuation', function () {
     assertSame(false, StreetCompare::differs('Torstraße 1', ''));
 });
 
+test('the internal map still shows groups 16 and 93', function () {
+    assertSame(true, MarkerQuery::isHiddenFor('public', '16,8'));
+    assertSame(false, MarkerQuery::isHiddenFor('internal', '16,8'));
+    assertSame(false, MarkerQuery::isHiddenFor('internal', '124,93'));
+    assertSame(false, MapAudience::requiresOfferAndProduct('internal'));
+    assertSame(true, MapAudience::requiresOfferAndProduct('public'));
+});
+
+test('a german postcode resolves to its state, a border code to both', function () {
+    assertSame(array('BE'), Bundesland::fromZip('10115'));
+    assertSame(array('BY'), Bundesland::fromZip('80331'));
+    assertSame(array('SN'), Bundesland::fromZip('01067'));
+    assertSame(array('NI'), Bundesland::fromZip('48455'));
+    assertSame(array('NW'), Bundesland::fromZip('48143'));
+    $border = Bundesland::fromZip('07919');
+    assertSame(true, in_array('SN', $border, true));
+    assertSame(true, in_array('TH', $border, true));
+    assertSame(array(), Bundesland::fromZip('101'));
+    assertSame(array(), Bundesland::fromZip(''));
+    assertSame('', Bundesland::sql(Bundesland::codes()));
+    $berlin = Bundesland::sql(array('BE'));
+    assertContains("item.country='DE'", $berlin);
+    assertContains('BETWEEN 10001 AND 14330', $berlin);
+    assertSame('1=0', Bundesland::sql(array('XX')));
+});
+
+test('internal marker sql keeps addresses without a role or a product', function () {
+    $sql = InternalFilter::sql(array(
+        'types' => array('laeden', 'haendler', 'sprecher', 'webshop', 'ohne'),
+        'countries' => array('DE', 'AT', 'CH', 'OTHER'),
+        'products' => array('cola', 'bier', 'frohlunder', 'muntermate', 'ohne'),
+        'status' => array('aktuell', 'ehemalig'),
+        'visibility' => array('oeffentlich', 'verborgen'),
+        'states' => Bundesland::codes(),
+    ));
+    assertContains('LEFT JOIN item_has_offertype', $sql);
+    assertNotContains('FIND_IN_SET', $sql);
+    assertNotContains('item_has_product', $sql);
+    assertNotContains("item.country=", $sql);
+    assertNotContains('1=0', $sql);
+});
+
+test('internal filters narrow status, visibility, role, product and state', function () {
+    $former = InternalFilter::sql(array(
+        'types' => array('laeden'),
+        'status' => array('ehemalig'),
+        'visibility' => array('verborgen'),
+        'products' => array('ohne'),
+        'states' => array('BE'),
+    ));
+    assertContains('ho.offertype_id=1', $former);
+    assertContains("FIND_IN_SET('16'", $former);
+    assertContains("FIND_IN_SET('93'", $former);
+    assertContains('NOT EXISTS', $former);
+    assertContains('BETWEEN 10001 AND 14330', $former);
+
+    $current = InternalFilter::sql(array(
+        'types' => array('ohne'),
+        'status' => array('aktuell'),
+        'products' => array('cola', 'ohne'),
+        'countries' => array('OTHER'),
+    ));
+    assertContains('ho.offertype_id IS NULL', $current);
+    assertContains("FIND_IN_SET('16', item.collmex_address_groups) = 0", $current);
+    assertContains("p.name='cola'", $current);
+    assertContains('NOT EXISTS', $current);
+    assertContains("item.country NOT IN ('DE','AT','CH')", $current);
+    assertNotContains("item.country='DE'", $current);
+});
+
+test('an empty internal selection matches nothing and a bad token is dropped', function () {
+    $empty = InternalFilter::sql(array(
+        'types' => array(''),
+        'status' => array('nope'),
+        'states' => array("BE' OR 1=1"),
+    ));
+    assertContains('1=0', $empty);
+    assertNotContains('OR 1=1', $empty);
+    assertSame(null, InternalFilter::sql(array()));
+});
+
+test('internal group match does not treat 160 as former', function () {
+    assertSame(true, AddressGroup::contains('160,16', '16'));
+    assertSame(false, AddressGroup::contains('160', '16'));
+    assertSame(false, AddressGroup::contains('124', '16'));
+});
+
+test('item list rejects an internal filter that is not an array', function () {
+    assertSame(true, ListQuery::rejected(array('status' => 'ehemalig')));
+    assertSame(true, ListQuery::rejected(array('states' => 'BE')));
+    assertSame(false, ListQuery::rejected(array('status' => array('aktuell'), 'states' => array('BE'))));
+});
+
 finished();

@@ -32,6 +32,19 @@ class MarkerQuery
         return false;
     }
 
+    /**
+     * The internal map keeps former customers and opt-outs visible.
+     * The public map still drops groups 16 and 93.
+     */
+    public static function isHiddenFor($audience, $groups)
+    {
+        if (MapAudience::isInternal($audience)) {
+            return false;
+        }
+
+        return self::isHidden($groups);
+    }
+
     public static function sql(array $countries, array $products)
     {
         $sql = 'SELECT item.id, item.lat, item.lng, ho.offertype_id AS offertype, item.collmex_address_groups'
