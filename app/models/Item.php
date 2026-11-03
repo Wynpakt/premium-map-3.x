@@ -113,16 +113,6 @@ class Item extends \Phalcon\Mvc\Model
         return $this;
     }
 
-    public static function rawSql($sql)
-    {
-
-        // Base model
-        $robot = new Item();
-
-        // Execute the query
-        return new Resultset(null, $robot, $robot->getReadConnection()->query($sql));
-    }
-
     /**
      * Method to set the value of field collmex_address_id
      *

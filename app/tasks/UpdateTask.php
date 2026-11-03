@@ -1,15 +1,7 @@
 <?php
-use \MarcusJaschen\Collmex\Client\Curl as CurlClient;
-use \MarcusJaschen\Collmex\Request;
-use \MarcusJaschen\Collmex\Type\CustomerGet;
 
 class UpdateTask extends BaseTask
 {
-    /*
-     * Collmex request Object
-     */
-    private $collmex;
-
     /*
      * static products
      */
@@ -54,11 +46,6 @@ class UpdateTask extends BaseTask
 
     private $collmex_offertype_webshop;
 
-    /*
-     * Collmex connected flag
-     */
-    private $collmex_connected;
-
     public function initialize()
     {
         /*
@@ -86,47 +73,6 @@ class UpdateTask extends BaseTask
         $this->collmex_offertype_haendler = 9;
         $this->collmex_offertype_sprecher = 7;
         $this->collmex_offertype_webshop = 112;
-    }
-
-    private function collmexConnect() {
-
-        if(!$this->collmex_connected) {
-
-            try {
-                // initialize HTTP client
-                $collmexClient = new CurlClient($this->config->collmex->user, $this->config->collmex->password, $this->config->collmex->customer_id);
-
-                // create request object
-                $this->collmex = new Request($collmexClient);
-
-                $this->collmex_connected = true;
-            } catch (Exception $e) {
-                $this->error('Verbindung zu collmex fehlgeschlagen.');
-            }
-        }
-    }
-
-    private function collmexCustomerGet() {
-
-        $this->collmexConnect();
-
-        try {
-            $getCustomerType = new CustomerGet([]);
-
-            // send HTTP request and get response object
-            $collmexResponse = $this->collmex->send($getCustomerType->getCsv());
-
-            if ($collmexResponse->isError()) {
-                echo "Collmex error: " . $collmexResponse->getErrorMessage() . "; Code=" . $collmexResponse->getErrorCode() . PHP_EOL;
-            } else {
-                return $collmexResponse->getRecords();
-            }
-        } catch (Exception $e) {
-
-            $this->error('Verbindung zu collmex fehlgeschlagen.');
-        }
-
-        return false;
     }
 
     /**
@@ -506,102 +452,6 @@ class UpdateTask extends BaseTask
         echo $checked . ' checked, ' . $differ . ' street names differ from Photon' . PHP_EOL;
     }
 
-    /*
-     * update internal addresses
-     */
-    public function fix112Action() {
-
-        /*
-        $item = new Item();
-        $item->setId(4);
-        $item->setName('Onlinehandel');
-
-        $item->save();
-        die();
-        */
-        $items = Item::listMarker();
-
-        $out = [];
-        foreach ($items as $r) {
-
-            $collmex_groups = explode(',',$r->getCollmexAddressGroups());
-
-            $offertypes = $r->getOffertypes();
-
-
-
-            if(in_array('112',$collmex_groups)) {
-
-                foreach ($offertypes as $o) {
-                    print_r($o->id);
-
-                }
-                echo "\n=====\n";
-
-                //print_r($collmex_groups);
-                /*
-
-
-
-                $otypes = [];
-                foreach ($offertypes as $o) {
-                    $otypes[$o->id] = true;
-                }
-                $otypes[4] = true;
-                $out = [];
-                foreach ($otypes as $key => $v) {
-                    $out[] = (int)$key;
-                }
-
-                foreach ($out as $key => $o) {
-                    $out[$key] = Offertype::find($o);
-                }
-
-
-                $r->setOffertypes($out);
-                $r->save();
-                */
-
-
-            }
-
-
-
-
-
-        }
-
-        die();
-    }
-
-    /*
-     * only for tests dump all data to csv
-     */
-    public function dumpAction() {
-
-        $fp = fopen('./collmex_data.csv', 'w');
-
-        if($records = $this->collmexGetCustomer()) {
-            $i = 0;
-            foreach ($records as $r) {
-
-                $data = (array)$r->getData();
-
-                if($i==0) {
-                    $titles = [];
-                    foreach ($data as $title => $value) {
-                        $titles[] = $title;
-                    }
-                    fputcsv($fp, $titles);
-                }
-                fputcsv($fp, $data);
-                $i++;
-            }
-        }
-
-        fclose($fp);
-    }
-    
     /**
      * Check Collmex Data before save it to the database
      * 
