@@ -4,6 +4,9 @@ class BaseTask extends \Phalcon\Cli\Task
 {
     public $collmex_curl;
 
+    /** @var array<string, array|null> postcode anchor for this run, keyed by country, zip and city */
+    private $postcodeAnchors = array();
+
     /**
      * @param string $countryCode DE, AT or CH
      * @return string|null
@@ -68,13 +71,10 @@ class BaseTask extends \Phalcon\Cli\Task
 
         $zip = trim((string) $zip);
         if ($zip !== '') {
-            $anchorFeatures = $this->photonFeatures(
-                PhotonGeocoder::endpoint($base, '', $zip, $city, $countryCode)
-            );
-            if ($anchorFeatures === false) {
+            $anchor = $this->postcodeAnchor($base, $zip, $city, $countryCode);
+            if ($anchor === false) {
                 return false;
             }
-            $anchor = PhotonGeocoder::anchor($anchorFeatures, $zip);
             if ($anchor) {
                 foreach (PhotonGeocoder::bboxRadii() as $radius) {
                     $features = $this->photonFeatures(PhotonGeocoder::endpoint(
@@ -102,6 +102,32 @@ class BaseTask extends \Phalcon\Cli\Task
         }
 
         return PhotonGeocoder::choose($features, $street, $zip);
+    }
+
+    /**
+     * One Photon search per postcode and city for this process.
+     * Many shops share a postcode, and that search is the slow one.
+     *
+     * @return array|null|false
+     */
+    private function postcodeAnchor($base, $zip, $city, $countryCode)
+    {
+        $key = strtoupper(trim((string) $countryCode)) . '|' . $zip . '|' . trim((string) $city);
+        if (array_key_exists($key, $this->postcodeAnchors)) {
+            return $this->postcodeAnchors[$key];
+        }
+
+        $features = $this->photonFeatures(
+            PhotonGeocoder::endpoint($base, '', $zip, $city, $countryCode)
+        );
+        if ($features === false) {
+            return false;
+        }
+
+        $anchor = PhotonGeocoder::anchor($features, $zip);
+        $this->postcodeAnchors[$key] = $anchor;
+
+        return $anchor;
     }
 
     public function error($msg, $exit = true) {

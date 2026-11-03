@@ -20,6 +20,7 @@ return new \Phalcon\Config\Config([
         'configDir'      => __DIR__ . '/../../app/config/',
         'baseUri'        => '/',
     ],
+    'audience' => 'public',
     'collmex' => [
         'user' => '',
         'password' => '',

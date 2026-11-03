@@ -2,6 +2,10 @@
 
 class UpdateTask extends BaseTask
 {
+    const GEOCODE_ATTEMPTS = 4;
+    const GEOCODE_RETRY_SECONDS = 2;
+    const GEOCODE_MISSES_BEFORE_STOP = 5;
+
     /*
      * static products
      */
@@ -102,13 +106,14 @@ class UpdateTask extends BaseTask
                     $collmex_groups = explode(',',$data['collmex_address_groups']);
 
                     /*
-                    * Skip if customer don't explicitly want to be listed
-                    * 
+                    * Public map: only group 124.
+                    * Internal map: every address that already has a place and a Collmex id.
+                    *
                     * 16: ehemalige Kunden
                     * 93: möchte auf eigenen Wunsch nicht auf die Landkarte
                     * 124: möchten auf die Landkarte
                     */
-                    if(!in_array('124',$collmex_groups)){
+                    if (!MapAudience::storesAddress($this->audience(), $collmex_groups)) {
                         continue;
                     }
                     
@@ -156,8 +161,8 @@ class UpdateTask extends BaseTask
                      */
                     $item->setEmail(ShopEmail::stored(isset($data['email']) ? $data['email'] : ''));
 
-                    // Collmex mixes private numbers into this field. Keep the column, store nothing.
-                    $item->setPhone('');
+                    $phone = isset($data['phone']) ? trim((string) $data['phone']) : '';
+                    $item->setPhone(MapAudience::storesPhone($this->audience()) ? $phone : '');
 
                     /*
                      * save values in model object
@@ -181,9 +186,10 @@ class UpdateTask extends BaseTask
                         $item->setOffertypes($offertypes);
                     }
                     /*
-                    * if item has no offertypes delete it
+                    * Public map: a row with no shop type is not a marker.
+                    * Internal map: the address stays, even without a type or product.
                     */
-                    else {
+                    elseif (!MapAudience::keepsWithoutOfferType($this->audience())) {
                         $unused_records++;
                         echo $item->name . ': ' . $item->city . '; ';
                         $item->delete();
@@ -238,7 +244,7 @@ class UpdateTask extends BaseTask
             return 0;
         }
 
-        $kept = SyncCleanup::keptIds($cleaned);
+        $kept = SyncCleanup::keptIds($cleaned, $this->audience());
         $deleted = 0;
         foreach (Item::find() as $databaseItem) {
             $id = (string) (int) $databaseItem->getCollmexAddressId();
@@ -300,6 +306,29 @@ class UpdateTask extends BaseTask
     }
     
     /*
+     * Speakers are located by city only. A single unanswered Photon call
+     * is retried. false means Photon still did not answer.
+     */
+    private function locateItem($item)
+    {
+        for ($try = 1; $try <= self::GEOCODE_ATTEMPTS; $try++) {
+            if (count($item->offertypes) == 1 && $item->offertypes[0]->id == $this->offertype_sprecher->id) {
+                $geo = $this->getCoordinates('', '', $item->city, $item->country);
+            } else {
+                $geo = $this->getCoordinates($item->street, $item->zip, $item->city, $item->country);
+            }
+            if ($geo !== false) {
+                return $geo;
+            }
+            if ($try < self::GEOCODE_ATTEMPTS) {
+                sleep(self::GEOCODE_RETRY_SECONDS);
+            }
+        }
+
+        return false;
+    }
+
+    /*
      * CLI action updating geo coordinates only
      */
     public function geoAction() {
@@ -312,6 +341,7 @@ class UpdateTask extends BaseTask
             
             $new_updated_items = 0;
             $faled_items = 0;
+            $photonMisses = 0;
             
             foreach ($items as $item) {
                 $missing = ((int)$item->lat == 0) || ((int)$item->lng == 0);
@@ -319,19 +349,30 @@ class UpdateTask extends BaseTask
                 if($missing || $pending) {
 
                     /*
-                     * Speakers are located by city only.
+                     * DE, AT and CH have a local Photon. Another country is skipped
+                     * so one foreign address does not stop the rest of the run.
                      */
-                    $geo = NULL;
-                    if(count($item->offertypes) == 1 && $item->offertypes[0]->id == $this->offertype_sprecher->id) {
-                        $geo = $this->getCoordinates("", "", $item->city, $item->country);
-                    } else {
-                        $geo = $this->getCoordinates($item->street, $item->zip, $item->city, $item->country);
+                    if ($this->photonBase($item->country) === null) {
+                        $item->geolocate_count = (int) $item->geolocate_count + 1;
+                        $item->save();
+                        $faled_items++;
+                        echo 'kein Endpunkt ' . $item->country . PHP_EOL;
+                        continue;
                     }
 
+                    $geo = $this->locateItem($item);
+
                     if ($geo === false) {
-                        echo PHP_EOL . 'Abbruch: Photon nicht erreichbar. Später erneut: php app/cli.php update geo' . PHP_EOL;
-                        break;
+                        $photonMisses++;
+                        echo PHP_EOL . 'Photon nicht erreichbar, Versuch ' . $photonMisses . PHP_EOL;
+                        if ($photonMisses >= self::GEOCODE_MISSES_BEFORE_STOP) {
+                            echo 'Abbruch: Photon nicht erreichbar. Später erneut: php app/cli.php update geo' . PHP_EOL;
+                            break;
+                        }
+                        sleep(self::GEOCODE_RETRY_SECONDS);
+                        continue;
                     }
+                    $photonMisses = 0;
 
                     $item->geolocate_count = (int)$item->geolocate_count + 1;
 
@@ -543,6 +584,11 @@ class UpdateTask extends BaseTask
             }
         }
         echo $checked . ' checked, ' . $differ . ' street names differ from Photon' . PHP_EOL;
+    }
+
+    private function audience()
+    {
+        return MapAudience::fromConfig($this->config);
     }
 
     /**

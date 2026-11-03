@@ -94,6 +94,13 @@ The script installs Apache, PHP 8.5, Phalcon 5.23 from PECL, MySQL 8.4, Composer
 
 `SKIP_FRONTEND=1` leaves the map document root alone. `SKIP_PHOTON=1` skips geocoding data. Rebuild only the map later with `I_UNDERSTAND=1 SKIP_PHOTON=1 bash docs/deploy/install-ubuntu-26.04.sh`.
 
+The same installer builds either map. `MAP_MODE=public` is the default: group 124, no password, and `ng build --configuration=production` keeps the public API host. `MAP_MODE=internal` stores every Collmex address that has a place and a Collmex id, builds `ng build --configuration=internal`, and Apache asks for a password on the API and the map before the app answers. That frontend calls the map host itself; Apache forwards `/item/`, `/search` and feedback posts to the API so the one login covers the pins. The password is `MAP_USER` / `MAP_PASSWORD` on the first run and then lives in `/etc/landkarte/htpasswd`. A later run on that host keeps `/etc/landkarte/mode`, so refreshing it does not drop the password. A second server, with its own hostnames, database and Collmex login, is how the other map is deployed. Do not point an internal install at the public host.
+
+```sh
+sudo MAP_MODE=public I_UNDERSTAND=1 bash docs/deploy/install-ubuntu-26.04.sh
+sudo MAP_MODE=internal MAP_USER=karte MAP_PASSWORD='…' I_UNDERSTAND=1 bash docs/deploy/install-ubuntu-26.04.sh
+```
+
 TLS, once DNS for both hostnames points at the server:
 
 ```sh
