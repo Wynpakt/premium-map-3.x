@@ -34,7 +34,8 @@ class InternalFilter
         $sql = 'SELECT item.id, item.lat, item.lng, ho.offertype_id AS offertype, item.collmex_address_groups'
             . ' FROM item'
             . ' LEFT JOIN item_has_offertype ho ON ho.item_id = item.id'
-            . ' WHERE item.lat IS NOT NULL AND item.lng IS NOT NULL';
+            . ' WHERE item.lat IS NOT NULL AND item.lng IS NOT NULL'
+            . ' AND ' . MapAddress::sql();
         $sql .= self::andWhere(self::typeSql(self::picked($query, 'types', array_keys(self::TYPES))));
         $sql .= self::andWhere(self::countrySql($query));
         $sql .= self::andWhere(self::productSql($query));

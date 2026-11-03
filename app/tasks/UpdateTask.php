@@ -364,6 +364,9 @@ class UpdateTask extends BaseTask
                 $missing = ((int)$item->lat == 0) || ((int)$item->lng == 0);
                 $pending = (int)$item->getGeocodePending() === 1;
                 if($missing || $pending) {
+                    if (!MapAddress::complete($item->street, $item->zip, $item->city)) {
+                        continue;
+                    }
 
                     /*
                      * DE, AT and CH have a local Photon. Another country is skipped
