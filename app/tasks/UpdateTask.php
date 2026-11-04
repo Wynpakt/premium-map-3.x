@@ -86,6 +86,15 @@ class UpdateTask extends BaseTask
      */
     public function mainAction()
     {
+        $lock = SyncLock::acquire(SyncLock::PATH);
+        if ($lock === null) {
+            $this->error('Sync-Sperre nicht angelegt: ' . SyncLock::PATH);
+        }
+        if ($lock === false) {
+            echo 'Sync läuft schon.' . PHP_EOL;
+            return;
+        }
+
         /*
          * get all customers from collmex
          */
@@ -101,7 +110,12 @@ class UpdateTask extends BaseTask
         $updated_records = 0;
         $address_changes = 0;
         $unused_records = 0;
+        $unchanged_records = 0;
         $failed_saves = 0;
+        $itemsByAddress = $this->itemsByAddressId();
+        $offersByItem = $this->idsByItem('ItemHasOffertype', 'getOffertypeId');
+        $productsByItem = $this->idsByItem('ItemHasProduct', 'getProductId');
+        $contactsByItem = $this->contactsByItem();
 
             foreach (CollmexAddress::shops($records) as $record) {
 
@@ -120,21 +134,32 @@ class UpdateTask extends BaseTask
                         continue;
                     }
                     
-                    $item = null;
-                    
+                    $addressId = (int) $data['address_id'];
+                    $parentContacts = ($storeStaff && isset($contactsByParent[$addressId]))
+                        ? $contactsByParent[$addressId]
+                        : array();
+                    $incoming = $this->incomingRow($data, $storeStaff, $parentContacts);
+                    $item = isset($itemsByAddress[$addressId]) ? $itemsByAddress[$addressId] : null;
+                    if ($item && SyncRow::same(
+                        $this->storedRow($item, $offersByItem, $productsByItem, $contactsByItem),
+                        $incoming
+                    )) {
+                        $unchanged_records++;
+                        continue;
+                    }
+
                     /*
                     * check if item exists by customer_id
                     * otherwise create new item
                     */
-                    if ($item = Item::findFirst('collmex_address_id = ' . (int)$data['address_id'])) {
-                        $newZip = preg_replace('/[^0-9]/', '', $data['zip']);
+                    if ($item) {
                         $changed = AddressChange::addressDiffers(
                             $item->getStreet(),
                             $item->getZip(),
                             $item->getCity(),
-                            $data['street'],
-                            $newZip,
-                            $data['city']
+                            $incoming['street'],
+                            $incoming['zip'],
+                            $incoming['city']
                         );
                         if ($changed) {
                             $next = AddressChange::nextGeoState(
@@ -159,32 +184,7 @@ class UpdateTask extends BaseTask
                         $new_records++;
                     }
 
-                    /*
-                     * Clean Email Field
-                     */
-                    $item->setEmail(ShopEmail::stored(isset($data['email']) ? $data['email'] : ''));
-
-                    $phone = isset($data['phone']) ? trim((string) $data['phone']) : '';
-                    $item->setPhone($storeStaff ? $phone : '');
-                    $item->setPhone2($storeStaff ? $this->staffText($data, 'phone2') : '');
-                    $item->setDepartment($storeStaff ? $this->staffText($data, 'department') : '');
-                    $item->setFirstname($storeStaff ? $this->staffText($data, 'firstname') : '');
-                    $item->setSurname($storeStaff ? $this->staffText($data, 'surname') : '');
-                    $item->setNote($storeStaff ? $this->staffText($data, 'note') : '');
-                    $item->setInactive($storeStaff && $this->staffText($data, 'inactive') === '1' ? 1 : 0);
-                    $item->setNoMailings($storeStaff && $this->staffText($data, 'no_mailings') === '1' ? 1 : 0);
-
-                    /*
-                     * save values in model object
-                     */
-                    $item->setCountry($data['country']);
-                    $item->setStreet($data['street']);
-                    $item->setZip(preg_replace('/[^0-9]/', '', $data['zip']));
-                    $item->setCity($data['city']);
-                    $item->setCollmexAddressId((int)$data['address_id']);
-                    $item->setName($data['name']);
-                    $item->setWeb($data['web']);
-                    $item->setCollmexAddressGroups($data['collmex_address_groups']);
+                    $this->applyRow($item, $incoming);
 
                     $item->deleteOffertypes();
                     $item->deleteProducts();
@@ -219,20 +219,17 @@ class UpdateTask extends BaseTask
                         echo 'Fehler: could not save item address_id => ' . $data['address_id'] . PHP_EOL;
                         continue;
                     }
-                    $parentId = (int) $data['address_id'];
-                    $contacts = ($storeStaff && isset($contactsByParent[$parentId]))
-                        ? $contactsByParent[$parentId]
-                        : array();
-                    $this->replaceContacts($item, $contacts);
+                    $this->replaceContacts($item, $incoming['contacts']);
                 }
             }
 
-            $deletecItems = $this->deleteOldEntries();
+            $deletecItems = $this->deleteOldEntries($records, $itemsByAddress);
 
             echo PHP_EOL;
 
             echo $new_records . ' new Map Items' . PHP_EOL;
             echo $updated_records . ' Items Updated' . PHP_EOL;
+            echo $unchanged_records . ' Items unchanged' . PHP_EOL;
             echo $address_changes . ' Address changes' . PHP_EOL;
             echo $unused_records . ' unused Records' . PHP_EOL;
             echo $deletecItems . ' deleted Records' . PHP_EOL;
@@ -241,8 +238,10 @@ class UpdateTask extends BaseTask
         }
     }
 
-    public function deleteOldEntries() {
-        $collmexItems = $this->collmexAddressGet(CollmexFetch::addresses($this->audience()));
+    public function deleteOldEntries($collmexItems = null, $databaseItems = null) {
+        if ($collmexItems === null) {
+            $collmexItems = $this->collmexAddressGet(CollmexFetch::addresses($this->audience()));
+        }
         if (SyncRun::emptyFetch($collmexItems)) {
             echo 'Collmex lieferte keine Adressen, nichts gelöscht.' . PHP_EOL;
             return 0;
@@ -262,7 +261,10 @@ class UpdateTask extends BaseTask
 
         $kept = SyncCleanup::keptIds($cleaned, $this->audience());
         $deleted = 0;
-        foreach (Item::find() as $databaseItem) {
+        if ($databaseItems === null) {
+            $databaseItems = Item::find();
+        }
+        foreach ($databaseItems as $databaseItem) {
             $id = (string) (int) $databaseItem->getCollmexAddressId();
             if (isset($kept[$id])) {
                 continue;
@@ -632,6 +634,8 @@ class UpdateTask extends BaseTask
             if (!$group) {
                 $group = new CollmexGroup();
                 $group->setCollmexId($mapped['id']);
+            } elseif ((string) $group->getName() === (string) $mapped['name']) {
+                continue;
             }
             $group->setName($mapped['name']);
             $group->save();
@@ -641,6 +645,65 @@ class UpdateTask extends BaseTask
     private function staffText(array $data, $key)
     {
         return isset($data[$key]) ? trim((string) $data[$key]) : '';
+    }
+
+    private function itemsByAddressId()
+    {
+        $items = Item::find();
+        if ($items === false) {
+            $this->error('Adressen konnten nicht gelesen werden.');
+        }
+        $byAddress = array();
+        foreach ($items as $item) {
+            $byAddress[(int) $item->getCollmexAddressId()] = $item;
+        }
+
+        return $byAddress;
+    }
+
+    private function idsByItem($class, $method)
+    {
+        $rows = call_user_func(array($class, 'find'));
+        if ($rows === false) {
+            $this->error('Zuordnungen konnten nicht gelesen werden.');
+        }
+        $out = array();
+        foreach ($rows as $row) {
+            $out[(int) $row->getItemId()][] = (int) call_user_func(array($row, $method));
+        }
+
+        return $out;
+    }
+
+    private function contactsByItem()
+    {
+        $rows = ItemContact::find();
+        if ($rows === false) {
+            $this->error('Ansprechpartner konnten nicht gelesen werden.');
+        }
+        $out = array();
+        foreach ($rows as $row) {
+            $out[(int) $row->getItemId()][] = array(
+                'collmex_id' => (int) $row->getCollmexId(),
+                'name' => (string) $row->getName(),
+                'department' => (string) $row->getDepartment(),
+                'phone' => (string) $row->getPhone(),
+                'phone2' => (string) $row->getPhone2(),
+                'email' => (string) $row->getEmail(),
+            );
+        }
+
+        return $out;
+    }
+
+    private function modelIds($models)
+    {
+        $ids = array();
+        foreach ($models as $model) {
+            $ids[] = (int) $model->getId();
+        }
+
+        return $ids;
     }
 
     private function replaceContacts($item, array $contacts)
@@ -672,6 +735,82 @@ class UpdateTask extends BaseTask
         foreach ($rows as $row) {
             $row->delete();
         }
+    }
+
+    private function incomingRow(array $data, $storeStaff, array $contacts)
+    {
+        $phone = isset($data['phone']) ? trim((string) $data['phone']) : '';
+
+        return array(
+            'name' => isset($data['name']) ? (string) $data['name'] : '',
+            'street' => isset($data['street']) ? (string) $data['street'] : '',
+            'zip' => preg_replace('/[^0-9]/', '', isset($data['zip']) ? (string) $data['zip'] : ''),
+            'city' => isset($data['city']) ? (string) $data['city'] : '',
+            'country' => isset($data['country']) ? (string) $data['country'] : '',
+            'web' => isset($data['web']) ? (string) $data['web'] : '',
+            'email' => ShopEmail::stored(isset($data['email']) ? $data['email'] : ''),
+            'phone' => $storeStaff ? $phone : '',
+            'phone2' => $storeStaff ? $this->staffText($data, 'phone2') : '',
+            'department' => $storeStaff ? $this->staffText($data, 'department') : '',
+            'firstname' => $storeStaff ? $this->staffText($data, 'firstname') : '',
+            'surname' => $storeStaff ? $this->staffText($data, 'surname') : '',
+            'note' => $storeStaff ? $this->staffText($data, 'note') : '',
+            'inactive' => $storeStaff && $this->staffText($data, 'inactive') === '1' ? 1 : 0,
+            'no_mailings' => $storeStaff && $this->staffText($data, 'no_mailings') === '1' ? 1 : 0,
+            'address_id' => (int) $data['address_id'],
+            'groups' => isset($data['collmex_address_groups']) ? (string) $data['collmex_address_groups'] : '',
+            'offertypes' => $this->modelIds($this->mapOffertypes($data['address_group'])),
+            'products' => $this->modelIds($this->mapProducts($data['address_group'])),
+            'contacts' => $storeStaff ? $contacts : array(),
+        );
+    }
+
+    private function applyRow($item, array $row)
+    {
+        $item->setEmail($row['email']);
+        $item->setPhone($row['phone']);
+        $item->setPhone2($row['phone2']);
+        $item->setDepartment($row['department']);
+        $item->setFirstname($row['firstname']);
+        $item->setSurname($row['surname']);
+        $item->setNote($row['note']);
+        $item->setInactive($row['inactive']);
+        $item->setNoMailings($row['no_mailings']);
+        $item->setCountry($row['country']);
+        $item->setStreet($row['street']);
+        $item->setZip($row['zip']);
+        $item->setCity($row['city']);
+        $item->setCollmexAddressId((int) $row['address_id']);
+        $item->setName($row['name']);
+        $item->setWeb($row['web']);
+        $item->setCollmexAddressGroups($row['groups']);
+    }
+
+    private function storedRow($item, array $offersByItem, array $productsByItem, array $contactsByItem)
+    {
+        $id = (int) $item->getId();
+
+        return array(
+            'name' => (string) $item->getName(),
+            'street' => (string) $item->getStreet(),
+            'zip' => (string) $item->getZip(),
+            'city' => (string) $item->getCity(),
+            'country' => (string) $item->getCountry(),
+            'web' => (string) $item->getWeb(),
+            'email' => (string) $item->getEmail(),
+            'phone' => (string) $item->getPhone(),
+            'phone2' => (string) $item->getPhone2(),
+            'department' => (string) $item->getDepartment(),
+            'firstname' => (string) $item->getFirstname(),
+            'surname' => (string) $item->getSurname(),
+            'note' => (string) $item->getNote(),
+            'inactive' => (int) $item->getInactive(),
+            'no_mailings' => (int) $item->getNoMailings(),
+            'groups' => (string) $item->getCollmexAddressGroups(),
+            'offertypes' => isset($offersByItem[$id]) ? $offersByItem[$id] : array(),
+            'products' => isset($productsByItem[$id]) ? $productsByItem[$id] : array(),
+            'contacts' => isset($contactsByItem[$id]) ? $contactsByItem[$id] : array(),
+        );
     }
 
     /**
