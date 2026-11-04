@@ -715,4 +715,65 @@ test('map queries drop an address that has no street, postcode or city', functio
     }
 });
 
+test('an unchanged shop stays the same row in any order', function () {
+    $row = array(
+        'name' => 'A',
+        'street' => 'Torstraße 1',
+        'zip' => '10119',
+        'city' => 'Berlin',
+        'country' => 'DE',
+        'web' => 'http://a.example',
+        'email' => 'a@example.com',
+        'phone' => '030',
+        'phone2' => '',
+        'department' => '',
+        'firstname' => '',
+        'surname' => '',
+        'note' => '',
+        'inactive' => 0,
+        'no_mailings' => '0',
+        'groups' => '8,20',
+        'offertypes' => array(2, 1),
+        'products' => array(1),
+        'contacts' => array(
+            array('collmex_id' => 9, 'name' => 'Bea', 'department' => '', 'phone' => '', 'phone2' => '', 'email' => ''),
+            array('collmex_id' => 4, 'name' => 'Ada', 'department' => 'Bar', 'phone' => '1', 'phone2' => '', 'email' => 'ada@example.com'),
+        ),
+    );
+    $flipped = $row;
+    $flipped['offertypes'] = array(1, 2);
+    $flipped['contacts'] = array($row['contacts'][1], $row['contacts'][0]);
+    $flipped['inactive'] = '0';
+    assertSame(true, SyncRow::same($row, $flipped));
+    $changed = $row;
+    $changed['phone'] = '040';
+    assertSame(false, SyncRow::same($row, $changed));
+});
+
+test('a second sync does not take the lock', function () {
+    $path = sys_get_temp_dir() . '/landkarte-sync-lock-' . getmypid();
+    $held = SyncLock::acquire($path);
+    assertSame(true, is_resource($held));
+    assertSame(null, SyncLock::acquire('/proc/does-not-exist/landkarte-sync.lock'));
+    $script = 'require ' . var_export(dirname(__DIR__) . '/app/lib/SyncLock.php', true) . ';'
+        . 'echo SyncLock::acquire(' . var_export($path, true) . ') === false ? "busy" : "free";';
+    $out = array();
+    $code = 1;
+    exec(PHP_BINARY . ' -r ' . escapeshellarg($script), $out, $code);
+    assertSame(0, $code);
+    assertSame('busy', trim(implode('', $out)));
+    flock($held, LOCK_UN);
+    fclose($held);
+    unlink($path);
+});
+
+test('the sync reuses the collmex fetch and locks itself', function () {
+    $task = file_get_contents(dirname(__DIR__) . '/app/tasks/UpdateTask.php');
+    assertContains('SyncLock::acquire', $task);
+    assertContains('deleteOldEntries($records, $itemsByAddress)', $task);
+    assertContains('SyncRow::same', $task);
+    $cron = file_get_contents(dirname(__DIR__) . '/docs/cron/landkarte.cron');
+    assertContains('SyncLock', $cron);
+});
+
 finished();

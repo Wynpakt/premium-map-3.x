@@ -11,6 +11,7 @@
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
+# update returns at once when a sync is already running (SyncLock).
 15 * * * * www-data cd /var/www/api.landkarte.premium-cola.de && php app/cli.php update >> /var/log/landkarte/sync.log 2>&1
 25 * * * * www-data test ! -f /var/lib/photon/refresh.lock && cd /var/www/api.landkarte.premium-cola.de && flock -n /var/lock/landkarte-geo.lock php app/cli.php update geo >> /var/log/landkarte/geo.log 2>&1
 

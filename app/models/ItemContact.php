@@ -85,6 +85,16 @@ class ItemContact extends \Phalcon\Mvc\Model
         return $this->email;
     }
 
+    public function getItemId()
+    {
+        return $this->item_id;
+    }
+
+    public function getCollmexId()
+    {
+        return $this->collmex_id;
+    }
+
     public function columnMap()
     {
         return array(
